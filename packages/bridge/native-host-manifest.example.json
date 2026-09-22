@@ -1,0 +1,9 @@
+{
+  "name": "com.waterlooworks.mcp",
+  "description": "Local WaterlooWorks MCP native messaging bridge",
+  "path": "/ABSOLUTE/PATH/TO/wat-mcp/dist/waterlooworks-bridge",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://REPLACE_WITH_THE_EXTENSION_ID/"
+  ]
+}

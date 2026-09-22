@@ -1,0 +1,17 @@
+{
+  "totalResults": 1,
+  "data": [
+    {
+      "id": "12345",
+      "data": [
+        { "key": "postingId", "value": "12345" },
+        { "key": "Id", "value": 12345 },
+        { "key": "JobTitle", "value": { "postingTitle": "FPGA Design Co-op" } },
+        { "key": "Organization", "value": "Example Semiconductors" },
+        { "key": "City", "value": "Waterloo" },
+        { "key": "Deadline", "value": "Sep 30, 2026 9:00 AM" }
+      ]
+    }
+  ],
+  "page": 1
+}

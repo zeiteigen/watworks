@@ -1,0 +1,11 @@
+node_modules/
+**/dist/
+
+# Authenticated captures and derived reports must remain outside version control.
+*.har
+*.har.json
+waterlooworks-har-report*.json
+
+.env
+.env.*
+*.log

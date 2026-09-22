@@ -1,0 +1,18 @@
+{
+  "postingId": "12345",
+  "position": "FPGA Design Co-op",
+  "organization": "Example Semiconductors",
+  "division": "Digital Systems",
+  "city": "Waterloo",
+  "region": "Ontario",
+  "country": "Canada",
+  "numberOfPositions": 2,
+  "deadline": "2026-09-30T09:00:00-0400",
+  "skills": ["SystemVerilog", "FPGA", "Python"],
+  "applicationData": {
+    "canApply": true,
+    "hasApplication": false,
+    "canCancelApplication": false,
+    "website": "https://waterlooworks.uwaterloo.ca/"
+  }
+}

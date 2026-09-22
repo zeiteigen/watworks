@@ -1,0 +1,27 @@
+{
+  "totalResults": 1,
+  "data": [
+    {
+      "id": "12345",
+      "data": [
+        { "key": "postingId", "value": "12345" },
+        { "key": "Id", "value": 12345 },
+        {
+          "key": "JobTitle",
+          "value": { "new": true, "featured": false, "applied": false, "viewed": false, "postingTitle": "FPGA Design Co-op" }
+        },
+        { "key": "Organization", "value": "Example Semiconductors" },
+        { "key": "Division", "value": "Digital Systems" },
+        { "key": "Openings", "value": 2 },
+        { "key": "City", "value": "Waterloo" },
+        { "key": "Level", "value": "Junior, Intermediate" },
+        { "key": "ApplicationCount", "value": 7 },
+        { "key": "Deadline", "value": "Sep 30, 2026 9:00 AM" },
+        { "key": "deadline", "value": "2026-09-30T09:00:00-0400" },
+        { "key": "canApply", "value": true },
+        { "key": "hasApplication", "value": false }
+      ]
+    }
+  ],
+  "page": 1
+}

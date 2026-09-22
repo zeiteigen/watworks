@@ -1,0 +1,56 @@
+<!doctype html>
+<html>
+  <head><title>WaterlooWorks Jobs</title></head>
+  <body>
+    <template id="dataViewer">
+      <data-column col-key="Id" title="ID" :is-id="true" :truncate="0" :table-col-width=""></data-column>
+      <data-column col-key="JobTitle" title="Job Title" :data-visualizer="jobTitleDataVisualizer" :truncate="0" :table-col-width="325"></data-column>
+      <data-column col-key="Organization" title="Organization" :truncate="0" :table-col-width="225"></data-column>
+      <data-column col-key="Division" title="Division" :truncate="0" :table-col-width="225"></data-column>
+      <data-column col-key="Openings" title="Openings" :truncate="0" :table-col-width=""></data-column>
+      <data-column col-key="City" title="City" :truncate="0" :table-col-width=""></data-column>
+      <data-column col-key="Level" title="Level" :truncate="0" :table-col-width=""></data-column>
+      <data-column col-key="ApplicationCount" title="Apps" :truncate="0" :table-col-width=""></data-column>
+      <data-column col-key="Deadline" title="App Deadline" :truncate="0" :table-col-width=""></data-column>
+    </template>
+    <script>
+      const dataViewerProps = {
+        dataParams: {
+          action: 'fake-jobs-action-for-tests',
+          isDataViewer: true
+        },
+        sort: [{key: "Id", direction: "desc"}]
+      };
+
+      const jobTitleDataVisualizer = {
+        template: "#jobTitleDataVisualizer",
+        mixins: [ DataViewerTools.DataVisualizerMixin ],
+        data: () => ({ label: "fixture" }),
+        computed: {
+          display() { return this.label; }
+        }
+      };
+
+      function getPostingPreScreening(postingId, callback) {
+        $.post("/myAccount/co-op/full/jobs.htm", {
+          action: 'fake-prescreening-action-for-tests',
+          postingId
+        }, callback);
+      }
+
+      function getPostingOverview(postingId, callback) {
+        $.post("/myAccount/co-op/full/jobs.htm", {
+          action: 'fake-overview-action-for-tests',
+          postingId
+        }, callback);
+      }
+
+      function getPostingData(postingId, callback) {
+        $.post("/myAccount/co-op/full/jobs.htm", {
+          action: 'fake-data-action-for-tests',
+          postingId
+        }, callback, "json");
+      }
+    </script>
+  </body>
+</html>

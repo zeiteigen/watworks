@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "WaterlooWorks MCP Session Bridge",
+  "version": "0.1.0",
+  "description": "Exports only the authenticated WaterlooWorks browser session to the local native bridge.",
+  "permissions": [
+    "cookies",
+    "nativeMessaging"
+  ],
+  "host_permissions": [
+    "https://waterlooworks.uwaterloo.ca/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  }
+}
