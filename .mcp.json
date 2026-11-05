@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "waterlooworks": {
+      "command": "bun",
+      "args": ["scripts/mcp.ts"]
+    }
+  }
+}

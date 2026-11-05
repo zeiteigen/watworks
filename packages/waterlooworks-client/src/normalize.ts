@@ -325,7 +325,7 @@ export interface ParsedPostingOverview {
 export function parsePostingOverviewHtml(html: string): ParsedPostingOverview {
   const text = htmlToText(html);
   const labelPattern = OVERVIEW_LABELS.map(escapeRegExp).join("|");
-  const expression = new RegExp(`(?:^|\\n|\\s)(${labelPattern})\\s*:\\s*`, "gi");
+  const expression = new RegExp(`(?:^|\\n)[ \t]*(${labelPattern})\\s*:\\s*`, "gi");
   const matches: Array<{ label: string; labelStart: number; valueStart: number }> = [];
   for (const match of text.matchAll(expression)) {
     const label = match[1];

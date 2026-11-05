@@ -1,4 +1,5 @@
 import {
+  DEFAULT_BRIDGE_BASE_URL,
   WATERLOOWORKS_ORIGIN,
   type BrowserCookie,
   type BridgeHealth,
@@ -90,7 +91,7 @@ export class BrowserExtensionSessionProvider implements HealthAwareSessionProvid
 
   constructor(options: BrowserExtensionSessionProviderOptions = {}) {
     this.baseUrl = validateBridgeBaseUrl(
-      options.baseUrl ?? `http://127.0.0.1:${Bun.env.WATERLOOWORKS_BRIDGE_PORT ?? "39451"}`,
+      options.baseUrl ?? DEFAULT_BRIDGE_BASE_URL,
     );
     this.fetchImpl = options.fetchImpl ?? fetch;
   }

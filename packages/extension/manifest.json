@@ -1,17 +1,63 @@
 {
   "manifest_version": 3,
-  "name": "WaterlooWorks MCP Session Bridge",
+  "name": "WaterlooWorks Workspace",
   "version": "0.1.0",
-  "description": "Exports only the authenticated WaterlooWorks browser session to the local native bridge.",
+  "description": "Workspace access, browser applications, sign-in assistance, and independent daily job discovery.",
   "permissions": [
-    "cookies",
-    "nativeMessaging"
+    "alarms",
+    "storage",
+    "notifications",
+    "scripting",
+    "nativeMessaging",
+    "cookies"
   ],
   "host_permissions": [
-    "https://waterlooworks.uwaterloo.ca/*"
+    "https://watworks.alishahzad.dev/*",
+    "https://waterlooworks.uwaterloo.ca/*",
+    "http://127.0.0.1/*",
+    "https://adfs.uwaterloo.ca/*",
+    "https://sts.uwaterloo.ca/*"
   ],
   "background": {
     "service_worker": "background.js",
     "type": "module"
-  }
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAz+RwTFyVSNkViDNirZHwscqQ+ItlwFtRVg5x5r2CCy1UMUwrODAWFipt1PCa5r7GX2XjHvRcl8M2a7aqLN3fhNuRP4yKD4GeFO6WdchcvbiEG1dBIDymRrTDF+NjebUxUtAtWJT88DKhy23Tg+/C4sVSWnry9unB0iSxA/DgovfVVuRZ151h31wiesOpGnWQ8broJSxaYeplh8n+FiEBNQFi4Jj5FTFbgn1KmC/0end9POzLVvTwDBaLhrrV1TK+GdKPxXyRF3W/UN1EzkhMVj7VuMLhiEcUndSXve8gJm8/AAvbqv7MyIbSlKu0pzEHsjwSnmOs047m4avnu1e4rwIDAQAB",
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://localhost/*",
+    "http://[::1]/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon16.png",
+      "32": "icon32.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icon16.png",
+    "32": "icon32.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+  "options_ui": {
+    "page": "submission-settings.html",
+    "open_in_tab": true
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://waterlooworks.uwaterloo.ca/*",
+        "https://adfs.uwaterloo.ca/*",
+        "https://sts.uwaterloo.ca/*"
+      ],
+      "js": [
+        "page-content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
 }

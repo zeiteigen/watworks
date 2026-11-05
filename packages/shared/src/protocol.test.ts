@@ -1,11 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { isBridgeResponse } from "./protocol.js";
+import { isWaterlooWorksSession } from "./protocol.js";
 
 describe("shared bridge protocol guards", () => {
-  test("accepts a well-formed WaterlooWorks session response", () => {
+  test("accepts a well-formed WaterlooWorks session", () => {
     expect(
-      isBridgeResponse({
-        type: "waterlooworks-session",
+      isWaterlooWorksSession({
         cookies: [
           {
             name: "WW_SESSION",
@@ -21,11 +20,8 @@ describe("shared bridge protocol guards", () => {
     ).toBe(true);
   });
 
-  test("rejects malformed session and error responses", () => {
-    expect(isBridgeResponse({ type: "waterlooworks-session", cookies: [], obtainedAt: 123 })).toBe(false);
-    expect(isBridgeResponse({ type: "waterlooworks-session", cookies: [{ name: "WW_SESSION" }], obtainedAt: "now" })).toBe(
-      false,
-    );
-    expect(isBridgeResponse({ type: "error", message: 123 })).toBe(false);
+  test("rejects malformed sessions", () => {
+    expect(isWaterlooWorksSession({ cookies: [], obtainedAt: 123 })).toBe(false);
+    expect(isWaterlooWorksSession({ cookies: [{ name: "WW_SESSION" }], obtainedAt: "now" })).toBe(false);
   });
 });

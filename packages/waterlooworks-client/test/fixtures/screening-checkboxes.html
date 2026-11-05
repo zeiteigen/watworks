@@ -1,0 +1,341 @@
+<div id="preScreenQuestions" class="js--ui-wizard-step wizard-step position--absolute" data-additional-step-validation="validatePreScreenQuestions()" data-display-condition="" data-allow-skip="false" data-status="incomplete" data-ajax="">
+<legend class="h1 wizard-form__section-fieldset__title">
+<span class="wizard-form__section__ordinal display--none"></span>
+<span class="js--step-title">Pre-Screening Questions</span>
+</legend>
+<div class="js--ui-wizard-step-container">
+<style>
+.error--tooltip {
+top: -35px;
+}
+</style>
+<input type="hidden" name="isSpiralRobot" value="true">
+<div class="df83099_ dfForm">
+<div id="grid_9369592447222067" class="grd     wrap align--start align--middle " style="">
+<div id="gridCol_7535442312489926" class="  grd__col--12  " style="">
+<div id="panel_11326010545724308" class="plain panel" style="padding-top: 16px; ">
+<div id="dfCatQuestions_69553_" class="boxContent form-horizontal">
+<div>
+<div class="js--question--container" id="111368_">
+<script type="text/javascript">
+if(!orbisAppSr.lastValidSelection)
+{
+orbisAppSr.lastValidSelection = new Object();
+}
+$(document).ready(function() {
+if(!orbisAppSr.lastValidSelection["question_111368_"])
+{
+orbisAppSr.lastValidSelection["question_111368_"] = null;
+}
+var choices = ["Yes","No"];
+var controllerPath = "/myAccount/co-op/full/jobs.htm";
+var selectedChoices = [];
+var limitAnswer = 0;
+$.validator.addMethod("question_111368_", function () {
+var otherQuestion = $(".question_111368_other");
+var otherText = $('input[name="other_111368"]').val();
+return !otherQuestion.is(":checked")
+|| (otherQuestion.is(":checked") && otherText != null && otherText.trim() !== '');
+}, 'This field is required');
+$("#question_111368_").change(function(){
+if(limitAnswer != 0 & $("input.question_111368_:checked").length > limitAnswer)
+{
+var notThese = "";
+if(orbisAppSr.lastValidSelection["question_111368_"] != null)
+{
+for(var i = 0; i < orbisAppSr.lastValidSelection["question_111368_"].length; i++)
+{
+notThese += "[value='" + orbisAppSr.lastValidSelection["question_111368_"][i] + "']";
+}
+}
+notThese = notThese.replace(/\]\[/g, "],[");
+$("input.question_111368_:checked").not(notThese).prop("checked", false);
+}
+orbisAppSr.lastValidSelection["question_111368_"] = new Array();
+$("input.question_111368_:checked").each(function(){
+orbisAppSr.lastValidSelection["question_111368_"].push($(this).val());
+});
+});
+for (var i = 0; i < selectedChoices.length; i++)
+{
+if($.trim(selectedChoices[i]) != "" && $("input.question_111368_[value='" + selectedChoices[i] + "']").length > 0)
+{
+$("input.question_111368_[value='" + selectedChoices[i] + "']").prop("checked", true);
+}
+else
+{
+$("input#other_111368_").removeAttr("readonly").val(selectedChoices[i]);
+$("input#otherCheckbox_111368_").prop("checked", true).val(selectedChoices[i]);
+}
+}
+});
+</script>
+<div class="position--relative">
+<div id="question_111368_" class="ui__checkbox--group margin--t--l js__checkbox-group js--error-placement  " style="">
+<fieldset>
+<legend class="h4 ui__checkbox--group__title">
+<span class="">Have you been involved in quantitative/ qualitative research data collection or analysis (e.g., survey, observational studies, focus groups or semi-structured interviews)?*</span>
+</legend>
+<div class="ui__checkbox--group__body js__checkbox--group__body">
+<div class="ui__checkbox--group__body__empty--state label label--p display--none js__empty--state">
+Your filter doesn't match any of the options
+</div>
+<label id="checkboxGroupItem_988365442603535" class="ui__toggle display--flex flex--column ui__checkbox--group--item js__checkbox--group--item " style="">
+<p class="label label--p margin--t--none margin--b--s js__toggle--label">
+Yes
+</p>
+<input type="checkbox" class="question_111368_" name="question_111368" value="Yes">
+<span class="toggle"></span>
+</label>
+<label id="checkboxGroupItem_3598701423051496" class="ui__toggle display--flex flex--column ui__checkbox--group--item js__checkbox--group--item " style="">
+<p class="label label--p margin--t--none margin--b--s js__toggle--label">
+No
+</p>
+<input type="checkbox" class="question_111368_" name="question_111368" value="No">
+<span class="toggle"></span>
+</label>
+</div>
+<hr>
+<div class="ui__checkbox--group__footer">
+<div class="checked--count font--12 ">
+<span class="js__selected--count"></span> of <span class="js__visible--count"></span>
+<span class="js__is--filtered display--none">
+( filtered )
+</span>
+</div>
+<label id="toggle_9612004174789202" class="ui__toggle display--flex flex--column ui__checkbox--group__select--all js__select--all" style="">
+<p class="label label--p margin--t--none margin--b--s js__toggle--label">
+All
+<span class="js__is--filtered display--none">
+(<span class="js__visible--count"></span>)
+</span>
+</p>
+<input type="checkbox" class="" name="">
+<span class="toggle"></span>
+</label>
+</div>
+</fieldset>
+</div>
+</div>
+<p class="text--help"></p>
+<script type="text/javascript">
+$("#question_111368_").uiCheckboxGroup({
+validation: {'required':true}
+});
+</script>
+</div>
+</div>
+<div>
+<div class="js--question--container" id="111369_">
+<script type="text/javascript">
+if(!orbisAppSr.lastValidSelection)
+{
+orbisAppSr.lastValidSelection = new Object();
+}
+$(document).ready(function() {
+if(!orbisAppSr.lastValidSelection["question_111369_"])
+{
+orbisAppSr.lastValidSelection["question_111369_"] = null;
+}
+var choices = ["Yes","No"];
+var controllerPath = "/myAccount/co-op/full/jobs.htm";
+var selectedChoices = [];
+var limitAnswer = 0;
+$.validator.addMethod("question_111369_", function () {
+var otherQuestion = $(".question_111369_other");
+var otherText = $('input[name="other_111369"]').val();
+return !otherQuestion.is(":checked")
+|| (otherQuestion.is(":checked") && otherText != null && otherText.trim() !== '');
+}, 'This field is required');
+$("#question_111369_").change(function(){
+if(limitAnswer != 0 & $("input.question_111369_:checked").length > limitAnswer)
+{
+var notThese = "";
+if(orbisAppSr.lastValidSelection["question_111369_"] != null)
+{
+for(var i = 0; i < orbisAppSr.lastValidSelection["question_111369_"].length; i++)
+{
+notThese += "[value='" + orbisAppSr.lastValidSelection["question_111369_"][i] + "']";
+}
+}
+notThese = notThese.replace(/\]\[/g, "],[");
+$("input.question_111369_:checked").not(notThese).prop("checked", false);
+}
+orbisAppSr.lastValidSelection["question_111369_"] = new Array();
+$("input.question_111369_:checked").each(function(){
+orbisAppSr.lastValidSelection["question_111369_"].push($(this).val());
+});
+});
+for (var i = 0; i < selectedChoices.length; i++)
+{
+if($.trim(selectedChoices[i]) != "" && $("input.question_111369_[value='" + selectedChoices[i] + "']").length > 0)
+{
+$("input.question_111369_[value='" + selectedChoices[i] + "']").prop("checked", true);
+}
+else
+{
+$("input#other_111369_").removeAttr("readonly").val(selectedChoices[i]);
+$("input#otherCheckbox_111369_").prop("checked", true).val(selectedChoices[i]);
+}
+}
+});
+</script>
+<div class="position--relative">
+<div id="question_111369_" class="ui__checkbox--group margin--t--l js__checkbox-group js--error-placement  " style="">
+<fieldset>
+<legend class="h4 ui__checkbox--group__title">
+<span class="">Do you have experience working with REDCap?*</span>
+</legend>
+<div class="ui__checkbox--group__body js__checkbox--group__body">
+<div class="ui__checkbox--group__body__empty--state label label--p display--none js__empty--state">
+Your filter doesn't match any of the options
+</div>
+<label id="checkboxGroupItem_7066196279124802" class="ui__toggle display--flex flex--column ui__checkbox--group--item js__checkbox--group--item " style="">
+<p class="label label--p margin--t--none margin--b--s js__toggle--label">
+Yes
+</p>
+<input type="checkbox" class="question_111369_" name="question_111369" value="Yes">
+<span class="toggle"></span>
+</label>
+<label id="checkboxGroupItem_7301391143002897" class="ui__toggle display--flex flex--column ui__checkbox--group--item js__checkbox--group--item " style="">
+<p class="label label--p margin--t--none margin--b--s js__toggle--label">
+No
+</p>
+<input type="checkbox" class="question_111369_" name="question_111369" value="No">
+<span class="toggle"></span>
+</label>
+</div>
+<hr>
+<div class="ui__checkbox--group__footer">
+<div class="checked--count font--12 ">
+<span class="js__selected--count"></span> of <span class="js__visible--count"></span>
+<span class="js__is--filtered display--none">
+( filtered )
+</span>
+</div>
+<label id="toggle_39355241759875337" class="ui__toggle display--flex flex--column ui__checkbox--group__select--all js__select--all" style="">
+<p class="label label--p margin--t--none margin--b--s js__toggle--label">
+All
+<span class="js__is--filtered display--none">
+(<span class="js__visible--count"></span>)
+</span>
+</p>
+<input type="checkbox" class="" name="">
+<span class="toggle"></span>
+</label>
+</div>
+</fieldset>
+</div>
+</div>
+<p class="text--help"></p>
+<script type="text/javascript">
+$("#question_111369_").uiCheckboxGroup({
+validation: {'required':true}
+});
+</script>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<script type="text/javascript">
+$(".js--category--container").each(function(){
+if($(this).find(".js--question--container").length == 0)
+{
+$(this).remove();
+}
+});
+</script>
+<script type="text/javascript">
+var keysToIgnore = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "Insert", "CapsLock", "Control", "Alt", "Shift"];
+$(function() {
+$(document).on('change', '.df83099_ select.leader', function(){
+var el = this;
+var inputId = el.id;
+var focused = el == document.activeElement;
+reload_form83099(null, function(){
+el = $("#" + inputId);
+var selectedOption = $(el).children('option:selected')[0];
+if (selectedOption.id && selectedOption.id.startsWith('dropdownOther_')) {
+var $otherText = $("#o" + selectedOption.id.slice(9));
+if (selectedOption.value == 'Other') {
+selectedOption.value = '';
+$otherText.val('');
+}
+$otherText.focus();
+} else if (focused) {
+$(el).focus();
+}
+});
+});
+$(document).on('keyup', '.df83099_ input.leader[type=text]', function(){
+if(!keysToIgnore.includes(event.key))
+{
+var curVal = $(this).val();
+var el = this;
+window.setTimeout(function(){
+if (el.value == curVal){
+var inputId = el.id;
+var focused = el == document.activeElement;
+var selectionStart = focused ? el.selectionStart : null;
+var selectionEnd = focused ? el.selectionEnd : null;
+if (focused) {
+reload_form83099(null, function(){
+el = $("#" + inputId).focus()[0];
+el.selectionStart = selectionStart;
+el.selectionEnd = selectionEnd;
+if (!curVal) {
+el.value = '';
+}
+});
+} else {
+reload_form83099();
+}
+}
+}, 1000);
+}
+});
+$(document).on('click', '.df83099_ input.leader[type=radio]', function(){reload_form83099()});
+$(document).on('click', '.df83099_ input.leader[type=checkbox]', function(){reload_form83099()});
+$(document).on('groupChanged', '.df83099_ .toggle-group.leader', function(){reload_form83099()});
+});
+$(window).on("load", function(){
+var $form = $('[id^=question_]').closest('form');
+$form.trigger("dfFormLoadStop");
+});
+function reload_form83099(resetForEmptyString, callback) {
+var $form = $('[id^=question_]').closest('form');
+$form.trigger("dfFormLoadStart");
+var request = $form.serializeFormToObject();
+request.action = 'fake-reload-operation';
+request.modelId = '83099';
+request.confirmationCode = '';
+request.recordId = '';
+request.resetForEmptyString = resetForEmptyString;
+request.key = '';
+request.showDFForm2 = '';
+request.showDFForm3 = '';
+request.dfRenderInBox = '';
+request.dfShowCategories = 'true';
+request.showQuestionCheckboxes = false;
+request.forceSpiralRobot = 'true';
+for(key in request) {
+if(key.startsWith('dfh_')) {
+request[key.replace('dfh_', '')] = request[key];
+delete request[key];
+}
+}
+if (!callback) {
+callback = function() {};
+}
+// 			$('.df83099_').empty();
+$('.df83099_').load('/myAccount/co-op/full/jobs.htm', request, function(){
+$form.trigger("dfFormLoadStop");
+callback.apply(this, arguments);
+});
+}
+</script>
+</div>
+</div>
+</div>

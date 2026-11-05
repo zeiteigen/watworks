@@ -1,0 +1,62 @@
+%-------------------------
+% Job-specific document (project summary, writing sample, portfolio notes, ...)
+% matching Jake's Resume.
+%
+% wat-mcp: this file is your editable copy. Each WAT marker below is replaced
+% with escaped text from the document and your profile:
+%   SENDER_NAME, SENDER_CONTACT, TITLE, SUBTITLE, BODY (sections)
+% The body uses \docSection{heading}, \docBulletsStart / \docBulletsEnd, and \item.
+%------------------------
+
+\documentclass[letterpaper,11pt]{article}
+
+\usepackage[empty]{fullpage}
+\usepackage[usenames,dvipsnames]{color}
+\usepackage[hidelinks]{hyperref}
+\usepackage[english]{babel}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{iftex}
+
+\ifPDFTeX
+  \input{glyphtounicode}
+  \pdfgentounicode=1
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+\else
+  % XeTeX/Tectonic: New Computer Modern matches Computer Modern and has bold small caps.
+  \usepackage{fontspec}
+  \setmainfont{NewCM10}[Extension=.otf, UprightFont=*-Regular, BoldFont=*-Bold,
+    ItalicFont=*-Italic, BoldItalicFont=*-BoldItalic]
+\fi
+
+\addtolength{\oddsidemargin}{-0.25in}
+\addtolength{\evensidemargin}{-0.25in}
+\addtolength{\textwidth}{0.5in}
+\addtolength{\topmargin}{-.25in}
+\addtolength{\textheight}{0.5in}
+
+\urlstyle{same}
+\raggedright
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{8pt}
+
+\titleformat{\section}{\vspace{-4pt}\scshape\raggedright\large}{}{0em}{}[\color{black}\titlerule \vspace{-5pt}]
+\newcommand{\docSection}[1]{\section*{#1}}
+\newcommand{\docBulletsStart}{\begin{itemize}[leftmargin=0.2in, itemsep=2pt, topsep=0pt]}
+\newcommand{\docBulletsEnd}{\end{itemize}}
+
+\begin{document}
+
+\begin{center}
+  \textbf{\Huge \scshape %%WAT:SENDER_NAME%%} \\ \vspace{1pt}
+  \small %%WAT:SENDER_CONTACT%%
+\end{center}
+\vspace{-6pt}\hrule\vspace{10pt}
+
+{\Large \textbf{%%WAT:TITLE%%}} \\
+\textit{%%WAT:SUBTITLE%%}
+
+%%WAT:BODY%%
+
+\end{document}

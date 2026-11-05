@@ -1,6 +1,9 @@
 export const WATERLOOWORKS_ORIGIN = "https://waterlooworks.uwaterloo.ca";
 export const WATERLOOWORKS_JOBS_PATH = "/myAccount/co-op/full/jobs.htm";
 export const WATERLOOWORKS_JOBS_URL = `${WATERLOOWORKS_ORIGIN}${WATERLOOWORKS_JOBS_PATH}`;
+export const LOOPBACK_BRIDGE_HOST = "127.0.0.1";
+export const DEFAULT_BRIDGE_PORT = 39_451;
+export const DEFAULT_BRIDGE_BASE_URL = `http://${LOOPBACK_BRIDGE_HOST}:${DEFAULT_BRIDGE_PORT}`;
 
 /**
  * The smallest cookie representation needed to recreate a Cookie header.
@@ -19,19 +22,6 @@ export interface WaterlooWorksSession {
   cookies: BrowserCookie[];
   obtainedAt: string;
 }
-
-export type BridgeRequest =
-  | { type: "get-waterlooworks-session" }
-  | { type: "ping" };
-
-export type BridgeResponse =
-  | {
-      type: "waterlooworks-session";
-      cookies: BrowserCookie[];
-      obtainedAt: string;
-    }
-  | { type: "pong" }
-  | { type: "error"; message: string };
 
 export interface BridgeHealth {
   bridgeConnected: boolean;
@@ -52,22 +42,12 @@ export function isBrowserCookie(value: unknown): value is BrowserCookie {
   );
 }
 
-export function isBridgeRequest(value: unknown): value is BridgeRequest {
-  if (!value || typeof value !== "object" || !("type" in value)) return false;
-  const type = (value as { type?: unknown }).type;
-  return type === "get-waterlooworks-session" || type === "ping";
-}
-
-export function isBridgeResponse(value: unknown): value is BridgeResponse {
-  if (!value || typeof value !== "object" || !("type" in value)) return false;
-  const response = value as { type?: unknown; cookies?: unknown; obtainedAt?: unknown; message?: unknown };
-  if (response.type === "waterlooworks-session") {
-    return (
-      Array.isArray(response.cookies) &&
-      typeof response.obtainedAt === "string" &&
-      response.cookies.every(isBrowserCookie)
-    );
-  }
-  if (response.type === "error") return typeof response.message === "string";
-  return response.type === "pong";
+export function isWaterlooWorksSession(value: unknown): value is WaterlooWorksSession {
+  if (!value || typeof value !== "object") return false;
+  const session = value as Partial<WaterlooWorksSession>;
+  return (
+    Array.isArray(session.cookies) &&
+    typeof session.obtainedAt === "string" &&
+    session.cookies.every(isBrowserCookie)
+  );
 }

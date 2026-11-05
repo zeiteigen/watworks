@@ -1,0 +1,61 @@
+%-------------------------
+% Cover letter matching Jake's Resume.
+%
+% wat-mcp: this file is your editable copy. Each %%WAT:...%% marker is replaced
+% with escaped text from the cover letter and your profile:
+%   SENDER_NAME, SENDER_CONTACT, DATE, RECIPIENT (lines joined with \\),
+%   GREETING, BODY (paragraphs), CLOSING
+%------------------------
+
+\documentclass[letterpaper,11pt]{article}
+
+\usepackage[empty]{fullpage}
+\usepackage[usenames,dvipsnames]{color}
+\usepackage[hidelinks]{hyperref}
+\usepackage[english]{babel}
+\usepackage{titlesec}
+\usepackage{iftex}
+
+\ifPDFTeX
+  \input{glyphtounicode}
+  \pdfgentounicode=1
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+\else
+  % XeTeX/Tectonic: New Computer Modern matches Computer Modern and has bold small caps.
+  \usepackage{fontspec}
+  \setmainfont{NewCM10}[Extension=.otf, UprightFont=*-Regular, BoldFont=*-Bold,
+    ItalicFont=*-Italic, BoldItalicFont=*-BoldItalic]
+\fi
+
+\addtolength{\oddsidemargin}{-0.25in}
+\addtolength{\evensidemargin}{-0.25in}
+\addtolength{\textwidth}{0.5in}
+\addtolength{\topmargin}{-.25in}
+\addtolength{\textheight}{0.5in}
+
+\urlstyle{same}
+\raggedright
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{10pt}
+
+\begin{document}
+
+\begin{center}
+  \textbf{\Huge \scshape %%WAT:SENDER_NAME%%} \\ \vspace{1pt}
+  \small %%WAT:SENDER_CONTACT%%
+\end{center}
+\vspace{-6pt}\hrule\vspace{6pt}
+
+%%WAT:DATE%%
+
+%%WAT:RECIPIENT%%
+
+%%WAT:GREETING%%
+
+%%WAT:BODY%%
+
+%%WAT:CLOSING%%\\[18pt]
+%%WAT:SENDER_NAME%%
+
+\end{document}

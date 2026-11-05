@@ -9,3 +9,23 @@ waterlooworks-har-report*.json
 .env
 .env.*
 *.log
+
+# Personal workspace: profile, resumes, cover letters, saved jobs.
+/data/*
+!/data/README.md
+
+# Tools downloaded by `bun run setup` (Tectonic).
+/.tools/
+
+# Per-user Claude Code settings; .claude/skills is a committed link.
+/.claude/settings.local.json
+
+# Browser inspection artifacts can contain authenticated page data.
+.playwright-mcp/
+
+# Local Cloudflare emulator state and generated Worker bundles.
+.wrangler/
+
+# Local Worker secrets.
+.dev.vars
+.dev.vars.*

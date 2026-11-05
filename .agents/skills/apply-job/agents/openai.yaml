@@ -1,0 +1,4 @@
+interface:
+  display_name: "Apply to a Job"
+  short_description: "Prepare one WaterlooWorks application by ID or name"
+  default_prompt: "Use $apply-job to prepare my application for the WaterlooWorks posting I identify by ID or name."

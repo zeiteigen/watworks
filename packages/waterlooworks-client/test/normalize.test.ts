@@ -224,3 +224,15 @@ describe("WaterlooWorks normalization", () => {
     });
   });
 });
+
+
+test("compensation's Current Work Term label cannot overwrite the recruiting term",()=>{
+  const overview=`<div><span class="label">Work Term:</span><p>2027 - Winter</p></div>
+    <div><span class="label">Compensation and Benefits:</span><p>Coop Students Weekly Rates of Pay :</p>
+    <table><tr><th>Current Work Term:</th><td>First<br>$833<br>Second<br>$900</td></tr></table></div>
+    <div><span class="label">Application Method:</span><p>WaterlooWorks</p></div>`;
+  const posting=normalizeJobPosting("495376",{postingId:"495376",position:"Research Assistant"},overview,undefined);
+  expect(posting.workTerm).toBe("2027 - Winter");
+  expect(posting.compensation).toContain("Current Work Term:");
+  expect(posting.compensation).toContain("$833");
+});

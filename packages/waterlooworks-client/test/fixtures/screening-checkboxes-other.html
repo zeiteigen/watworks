@@ -1,0 +1,242 @@
+<div class="js--question--container" id="111383_">
+<script type="text/javascript">
+if(!orbisAppSr.lastValidSelection)
+{
+orbisAppSr.lastValidSelection = new Object();
+}
+$(document).ready(function() {
+if(!orbisAppSr.lastValidSelection["question_111383_"])
+{
+orbisAppSr.lastValidSelection["question_111383_"] = null;
+}
+var choices = ["I am able to work in person.","I am unable to work in person."];
+var controllerPath = "/myAccount/co-op/full/jobs.htm";
+var selectedChoices = [];
+var limitAnswer = 0;
+$.validator.addMethod("question_111383_", function () {
+var otherQuestion = $(".question_111383_other");
+var otherText = $('input[name="other_111383"]').val();
+return !otherQuestion.is(":checked")
+|| (otherQuestion.is(":checked") && otherText != null && otherText.trim() !== '');
+}, 'This field is required');
+$("#question_111383_").change(function(){
+if(limitAnswer != 0 & $("input.question_111383_:checked").length > limitAnswer)
+{
+var notThese = "";
+if(orbisAppSr.lastValidSelection["question_111383_"] != null)
+{
+for(var i = 0; i < orbisAppSr.lastValidSelection["question_111383_"].length; i++)
+{
+notThese += "[value='" + orbisAppSr.lastValidSelection["question_111383_"][i] + "']";
+}
+}
+notThese = notThese.replace(/\]\[/g, "],[");
+$("input.question_111383_:checked").not(notThese).prop("checked", false);
+}
+orbisAppSr.lastValidSelection["question_111383_"] = new Array();
+$("input.question_111383_:checked").each(function(){
+orbisAppSr.lastValidSelection["question_111383_"].push($(this).val());
+});
+});
+for (var i = 0; i < selectedChoices.length; i++)
+{
+if($.trim(selectedChoices[i]) != "" && $("input.question_111383_[value='" + selectedChoices[i] + "']").length > 0)
+{
+$("input.question_111383_[value='" + selectedChoices[i] + "']").prop("checked", true);
+}
+else
+{
+$("input#other_111383_").removeAttr("readonly").val(selectedChoices[i]);
+$("input#otherCheckbox_111383_").prop("checked", true).val(selectedChoices[i]);
+}
+}
+});
+</script>
+<div class="position--relative">
+<div id="question_111383_" class="ui__checkbox--group margin--t--l js__checkbox-group js--error-placement  " style="">
+<fieldset>
+<legend class="h4 ui__checkbox--group__title">
+<span class="">This job requires that you work in-person in Wallenstein, ON. *</span>
+</legend>
+<div class="ui__checkbox--group__body js__checkbox--group__body ps">
+<div class="ui__checkbox--group__body__empty--state label label--p display--none js__empty--state">
+Your filter doesn't match any of the options
+</div>
+<label id="checkboxGroupItem_3372281565801072" class="ui__toggle display--flex flex--column ui__checkbox--group--item js__checkbox--group--item " style="">
+<p class="label label--p margin--t--none margin--b--s js__toggle--label">
+I am able to work in person.
+</p>
+<input type="checkbox" class="question_111383_ js__checkbox--group__required_question_111383_" name="question_111383" value="I am able to work in person.">
+<span class="toggle"></span>
+</label>
+<label id="checkboxGroupItem_3409125143941394" class="ui__toggle display--flex flex--column ui__checkbox--group--item js__checkbox--group--item " style="">
+<p class="label label--p margin--t--none margin--b--s js__toggle--label">
+I am unable to work in person.
+</p>
+<input type="checkbox" class="question_111383_ js__checkbox--group__required_question_111383_" name="question_111383" value="I am unable to work in person.">
+<span class="toggle"></span>
+</label>
+<div class="js__checkbox--group--item js__checkbox--group--other ">
+<label id="otherCheckbox_111383_" class="ui__toggle display--flex flex--column ui__checkbox--group--item" style="">
+<p class="label label--p margin--t--none margin--b--s js__toggle--label">
+Other
+</p>
+<input type="checkbox" id="otherCheckbox_111383_" class="js__checkbox--group--other__checkbox question_111383_other question_111383 question_111383_ otherCheckbox_111383_ required ifCheckedMustNotBeEmpty_111383 js__checkbox--group__required_question_111383_">
+<span class="toggle"></span>
+</label>
+<div class="js__other--textbox__container display--none">
+<label for="other_111383" class="only--screen-reader">This job requires that you work in-person in Wallenstein, ON. : Other Value</label>
+<input type="text" placeholder="Other Value" id="other_111383" checked="false" value="" name="other_111383" class="input--box">
+</div>
+</div>
+<div class="ps__rail-x" style="left: 0px; bottom: 0px;"><div class="ps__thumb-x" tabindex="0" style="left: 0px; width: 0px;"></div></div><div class="ps__rail-y" style="top: 0px; right: 0px;"><div class="ps__thumb-y" tabindex="0" style="top: 0px; height: 0px;"></div></div></div>
+<hr>
+<div class="ui__checkbox--group__footer">
+<div class="checked--count font--12 ">
+<span class="js__selected--count">0</span> of <span class="js__visible--count">3</span>
+<span class="js__is--filtered display--none">
+( filtered )
+</span>
+</div>
+<label id="toggle_5875186472465926" class="ui__toggle display--flex flex--column ui__checkbox--group__select--all js__select--all" style="">
+<p class="label label--p margin--t--none margin--b--s js__toggle--label">
+All
+<span class="js__is--filtered display--none">
+(<span class="js__visible--count">3</span>)
+</span>
+</p>
+<input type="checkbox" class="" name="">
+<span class="toggle"></span>
+</label>
+</div>
+</fieldset>
+</div>
+</div>
+<p class="text--help"></p>
+<script type="text/javascript">
+$("#question_111383_").uiCheckboxGroup({
+validation: {'required':true}
+});
+</script>
+</div>
+<div class="js--question--container" id="111384_">
+<script type="text/javascript">
+if(!orbisAppSr.lastValidSelection)
+{
+orbisAppSr.lastValidSelection = new Object();
+}
+$(document).ready(function() {
+if(!orbisAppSr.lastValidSelection["question_111384_"])
+{
+orbisAppSr.lastValidSelection["question_111384_"] = null;
+}
+var choices = ["Yes","No"];
+var controllerPath = "/myAccount/co-op/full/jobs.htm";
+var selectedChoices = [];
+var limitAnswer = 0;
+$.validator.addMethod("question_111384_", function () {
+var otherQuestion = $(".question_111384_other");
+var otherText = $('input[name="other_111384"]').val();
+return !otherQuestion.is(":checked")
+|| (otherQuestion.is(":checked") && otherText != null && otherText.trim() !== '');
+}, 'This field is required');
+$("#question_111384_").change(function(){
+if(limitAnswer != 0 & $("input.question_111384_:checked").length > limitAnswer)
+{
+var notThese = "";
+if(orbisAppSr.lastValidSelection["question_111384_"] != null)
+{
+for(var i = 0; i < orbisAppSr.lastValidSelection["question_111384_"].length; i++)
+{
+notThese += "[value='" + orbisAppSr.lastValidSelection["question_111384_"][i] + "']";
+}
+}
+notThese = notThese.replace(/\]\[/g, "],[");
+$("input.question_111384_:checked").not(notThese).prop("checked", false);
+}
+orbisAppSr.lastValidSelection["question_111384_"] = new Array();
+$("input.question_111384_:checked").each(function(){
+orbisAppSr.lastValidSelection["question_111384_"].push($(this).val());
+});
+});
+for (var i = 0; i < selectedChoices.length; i++)
+{
+if($.trim(selectedChoices[i]) != "" && $("input.question_111384_[value='" + selectedChoices[i] + "']").length > 0)
+{
+$("input.question_111384_[value='" + selectedChoices[i] + "']").prop("checked", true);
+}
+else
+{
+$("input#other_111384_").removeAttr("readonly").val(selectedChoices[i]);
+$("input#otherCheckbox_111384_").prop("checked", true).val(selectedChoices[i]);
+}
+}
+});
+</script>
+<div class="position--relative">
+<div id="question_111384_" class="ui__checkbox--group margin--t--l js__checkbox-group js--error-placement  " style="">
+<fieldset>
+<legend class="h4 ui__checkbox--group__title">
+<span class="">This position is funded through the Government of Canada's Student Work Placement Program (SWPP). Do you meet the requirements to participate in this program?*</span>
+</legend>
+<div class="ui__checkbox--group__body js__checkbox--group__body ps">
+<div class="ui__checkbox--group__body__empty--state label label--p display--none js__empty--state">
+Your filter doesn't match any of the options
+</div>
+<label id="checkboxGroupItem_017154090202520678" class="ui__toggle display--flex flex--column ui__checkbox--group--item js__checkbox--group--item " style="">
+<p class="label label--p margin--t--none margin--b--s js__toggle--label">
+Yes
+</p>
+<input type="checkbox" class="question_111384_ js__checkbox--group__required_question_111384_" name="question_111384" value="Yes">
+<span class="toggle"></span>
+</label>
+<label id="checkboxGroupItem_1795196973703942" class="ui__toggle display--flex flex--column ui__checkbox--group--item js__checkbox--group--item " style="">
+<p class="label label--p margin--t--none margin--b--s js__toggle--label">
+No
+</p>
+<input type="checkbox" class="question_111384_ js__checkbox--group__required_question_111384_" name="question_111384" value="No">
+<span class="toggle"></span>
+</label>
+<div class="js__checkbox--group--item js__checkbox--group--other ">
+<label id="otherCheckbox_111384_" class="ui__toggle display--flex flex--column ui__checkbox--group--item" style="">
+<p class="label label--p margin--t--none margin--b--s js__toggle--label">
+Other
+</p>
+<input type="checkbox" id="otherCheckbox_111384_" class="js__checkbox--group--other__checkbox question_111384_other question_111384 question_111384_ otherCheckbox_111384_ required ifCheckedMustNotBeEmpty_111384 js__checkbox--group__required_question_111384_">
+<span class="toggle"></span>
+</label>
+<div class="js__other--textbox__container display--none">
+<label for="other_111384" class="only--screen-reader">This position is funded through the Government of Canada's Student Work Placement Program (SWPP). Do you meet the requirements to participate in this program?: Other Value</label>
+<input type="text" placeholder="Other Value" id="other_111384" checked="false" value="" name="other_111384" class="input--box">
+</div>
+</div>
+<div class="ps__rail-x" style="left: 0px; bottom: 0px;"><div class="ps__thumb-x" tabindex="0" style="left: 0px; width: 0px;"></div></div><div class="ps__rail-y" style="top: 0px; right: 0px;"><div class="ps__thumb-y" tabindex="0" style="top: 0px; height: 0px;"></div></div></div>
+<hr>
+<div class="ui__checkbox--group__footer">
+<div class="checked--count font--12 ">
+<span class="js__selected--count">0</span> of <span class="js__visible--count">3</span>
+<span class="js__is--filtered display--none">
+( filtered )
+</span>
+</div>
+<label id="toggle_6081012902842543" class="ui__toggle display--flex flex--column ui__checkbox--group__select--all js__select--all" style="">
+<p class="label label--p margin--t--none margin--b--s js__toggle--label">
+All
+<span class="js__is--filtered display--none">
+(<span class="js__visible--count">3</span>)
+</span>
+</p>
+<input type="checkbox" class="" name="">
+<span class="toggle"></span>
+</label>
+</div>
+</fieldset>
+</div>
+</div>
+<p class="text--help"></p>
+<script type="text/javascript">
+$("#question_111384_").uiCheckboxGroup({
+validation: {'required':true}
+});
+</script>
+</div>

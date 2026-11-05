@@ -1,49 +1,31 @@
 import { describe, expect, test } from "bun:test";
-import { BridgeState, createBridgeServer } from "../../bridge/src/index.js";
-import { WaterlooWorksClient } from "../src/client.js";
-import { BrowserExtensionSessionProvider } from "../src/session.js";
+import { createExtensionBridgeServer } from "../../bridge/src/extension-broker.js";
+import { ExtensionCommandProxy, ExtensionResearchClient } from "../../bridge/src/extension-proxy.js";
+import { EXPECTED_EXTENSION_ID } from "../../shared/src/extension-protocol.js";
 
-const page = await Bun.file(new URL("./fixtures/jobs-page.html", import.meta.url)).text();
-
-describe("bridge, session provider, and client integration", () => {
-  test("reports an authenticated bootstrapped health state over loopback", async () => {
-    const state = new BridgeState();
-    state.setSession({
-      cookies: [
-        {
-          name: "WW_SESSION",
-          value: "redacted-test-value",
-          domain: "waterlooworks.uwaterloo.ca",
-          path: "/",
-          secure: true,
-          httpOnly: true,
-        },
-      ],
-      obtainedAt: "2026-09-16T00:00:00.000Z",
-    });
-    const bridge = createBridgeServer(state, 0);
-
+describe("extension bridge and research proxy integration", () => {
+  test("reports extension connection and proxy health over loopback", async () => {
+    const bridge = createExtensionBridgeServer(0);
+    const socket = new WebSocket(`ws://127.0.0.1:${bridge.server.port}/extension`, {
+      headers: { origin: `chrome-extension://${EXPECTED_EXTENSION_ID}` },
+    } as any);
     try {
-      const provider = new BrowserExtensionSessionProvider({
-        baseUrl: `http://127.0.0.1:${bridge.port}`,
-      });
-      const client = new WaterlooWorksClient(provider, {
-        fetchImpl: async (input, init) =>
-          ({
-            status: 200,
-            ok: true,
-            url: String(input),
-            text: async () => (!init?.method || init.method === "GET" ? page : "{}"),
-          }) as Response,
-      });
-
-      await expect(client.health()).resolves.toEqual({
-        authenticated: true,
-        bridgeConnected: true,
-        bootstrapped: true,
-      });
+      await new Promise<void>((resolve, reject) => { socket.onopen = () => resolve(); socket.onerror = () => reject(new Error("socket failed")); });
+      socket.send(JSON.stringify({ type: "hello", protocolVersion: 1, extensionVersion: "test", capabilities: ["health"] }));
+      socket.onmessage = event => {
+        const command = JSON.parse(String(event.data));
+        socket.send(JSON.stringify({ type: "result", requestId: command.requestId, result: { authenticated: true, bridgeConnected: true, bootstrapped: true } }));
+      };
+      const client = new ExtensionResearchClient(new ExtensionCommandProxy(`http://127.0.0.1:${bridge.server.port}`));
+      await expect(client.health()).resolves.toEqual({ authenticated: true, bridgeConnected: true, bootstrapped: true });
     } finally {
+      socket.close();
       bridge.stop();
     }
+  });
+
+  test("returns useful disconnected health when the bridge is unavailable", async () => {
+    const client = new ExtensionResearchClient(new ExtensionCommandProxy("http://127.0.0.1:1"));
+    await expect(client.health()).resolves.toMatchObject({ authenticated: false, bridgeConnected: false, bootstrapped: false });
   });
 });

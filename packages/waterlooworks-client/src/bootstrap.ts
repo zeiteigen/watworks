@@ -249,6 +249,18 @@ function parseLiteral(source: string): unknown {
   return value;
 }
 
+/** Read page-generated literal configuration without evaluating JavaScript. */
+export function parsePageLiteral(source: string): unknown {
+  try { return parseLiteral(source); }
+  catch { throw new ProtocolChangedError("Unsupported page configuration literal"); }
+}
+
+export function discoverPageAction(source: string, callableName: string): string {
+  const action = extractCallableAction(source, callableName);
+  if (!action) throw new ProtocolChangedError(`Missing operation: ${callableName}`);
+  return action;
+}
+
 function extractBalancedAfter(source: string, marker: string, open: string, close: string): string {
   const markerIndex = source.indexOf(marker);
   if (markerIndex < 0) throw new ProtocolChangedError(`Could not locate ${marker} in jobs page`);

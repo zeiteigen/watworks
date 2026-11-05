@@ -1,106 +1,88 @@
-import {
-  WATERLOOWORKS_JOBS_URL,
-  isBridgeRequest,
-  type BrowserCookie,
-} from "../../shared/src/protocol.js";
+import { getSubmissionStatus, markSubmissionSessionDirty, prepareSubmissionSession } from "./submission-client.js";
+import { refreshDueDiscovery } from "./discovery-session.js";
+import { startService } from "./start-service.js";
+import { openApplicationForm } from "./open-application-form.js";
+import { diagnosticTabs, inspectTab } from "./tab-inspection.js";
+import { EXTENSION_BUILD } from "./build-info.js";
+import { WATERLOOWORKS_ORIGIN } from "../../shared/src/protocol.js";
+import { daily, reads, executeCommand } from "./commands.js";
+import { discoveryStatus, discoveriesList } from "./discovery.js";
+import { policyGet, policySave } from "./discovery-policy.js";
+import { connect, serviceConnected } from "./connection.js";
+import { browserResearch } from "./research.js";
+import { handlePageMessage } from "./page-messages.js";
+import { clearSignInEpisode, isSignInTab, continueRecognizedSignIn, ensureSignIn } from "./signin.js";
 
-const NATIVE_HOST_NAME = "com.waterlooworks.mcp";
-
-let nativePort: chrome.runtime.Port | undefined;
-let sessionExportTimer: ReturnType<typeof setTimeout> | undefined;
-
-function postNativeMessage(port: chrome.runtime.Port, message: unknown): boolean {
-  if (nativePort !== port) return false;
-
-  try {
-    port.postMessage(message);
+chrome.runtime.onMessage.addListener((message: unknown, sender, reply) => {
+  const pageTask = handlePageMessage(message, sender);
+  if (pageTask) {
+    void pageTask.then(value => reply({ok:true,value}), () => reply({ok:false,error:"Page request failed"}));
     return true;
-  } catch {
-    // The host can disconnect asynchronously between the identity check and
-    // postMessage(). Do not try to report an error through the same dead port.
-    if (nativePort === port) nativePort = undefined;
-    return false;
   }
-}
-
-function isWaterlooWorksCookie(cookie: chrome.cookies.Cookie): boolean {
-  const domain = cookie.domain.replace(/^\./, "").toLowerCase();
-  return domain === "waterlooworks.uwaterloo.ca";
-}
-
-function narrowCookie(cookie: chrome.cookies.Cookie): BrowserCookie {
-  return {
-    name: cookie.name,
-    value: cookie.value,
-    domain: cookie.domain,
-    path: cookie.path,
-    secure: cookie.secure,
-    httpOnly: cookie.httpOnly,
-  };
-}
-
-async function exportSession(): Promise<void> {
-  const port = nativePort;
-  if (!port) return;
-
-  try {
-    // Query the endpoint that the client actually calls. This includes cookies
-    // scoped to /myAccount, which a root-URL lookup would omit.
-    const cookies = await chrome.cookies.getAll({ url: WATERLOOWORKS_JOBS_URL });
-    postNativeMessage(port, {
-      type: "waterlooworks-session",
-      cookies: cookies.filter(isWaterlooWorksCookie).map(narrowCookie),
-      obtainedAt: new Date().toISOString(),
-    });
-  } catch {
-    postNativeMessage(port, { type: "error", message: "Unable to read WaterlooWorks cookies" });
-  }
-}
-
-function scheduleSessionExport(): void {
-  if (sessionExportTimer !== undefined) clearTimeout(sessionExportTimer);
-  sessionExportTimer = setTimeout(() => {
-    sessionExportTimer = undefined;
-    if (!nativePort) {
-      connectNative();
-      return;
+  if (sender.id !== chrome.runtime.id || !sender.url?.startsWith(chrome.runtime.getURL(""))) return false;
+  const input = message as { type?: string; policy?: unknown; tabId?: unknown; includeHtml?: unknown; jobId?: unknown };
+  const task = async () => {
+    if (input.type === "openApplicationForm") return openApplicationForm(input.jobId, reads);
+    if(input.type === "debugListTabs")return diagnosticTabs();
+    if(input.type === "debugInspectTab")return {extensionBuild:EXTENSION_BUILD,...await inspectTab(input.tabId,input.includeHtml)};
+    if (input.type === "startService") { await startService(); connect(); return { started: true }; }
+    if (input.type === "signIn") {
+      await chrome.storage.session.remove("signin:episode-opened");
+      await ensureSignIn();
+      return { ok: true };
     }
-    void exportSession().catch(() => undefined);
-  }, 100);
-}
-
-function handleNativeMessage(message: unknown): void {
-  if (!isBridgeRequest(message)) return;
-  const request = message;
-  if (request.type === "get-waterlooworks-session") {
-    void exportSession().catch(() => undefined);
-  } else if (request.type === "ping") {
-    const port = nativePort;
-    if (port) postNativeMessage(port, { type: "pong" });
-  }
-}
-
-function connectNative(): void {
-  if (nativePort) return;
-
-  try {
-    const port = chrome.runtime.connectNative(NATIVE_HOST_NAME);
-    nativePort = port;
-    port.onMessage.addListener(handleNativeMessage);
-    port.onDisconnect.addListener(() => {
-      const error = chrome.runtime.lastError;
-      if (error) console.warn(`Native messaging host disconnected: ${error.message}`);
-      if (nativePort === port) nativePort = undefined;
-    });
-    void exportSession().catch(() => undefined);
-  } catch {
-    nativePort = undefined;
-  }
-}
-
-chrome.runtime.onStartup.addListener(connectNative);
-chrome.runtime.onInstalled.addListener(connectNative);
-chrome.cookies.onChanged.addListener((changeInfo) => {
-  if (isWaterlooWorksCookie(changeInfo.cookie)) scheduleSessionExport();
+    if (input.type === "listApplications") return executeCommand("listApplications",[],Date.now()+30_000);
+    if (input.type === "getSubmissionStatus") return getSubmissionStatus();
+    if (input.type === "prepareSubmissionSession") return prepareSubmissionSession();
+    if (input.type === "status") return { ...await browserResearch.health(), serviceConnected: serviceConnected() };
+    if (input.type === "checkNow") return daily(true);
+    if (input.type === "discoveryPolicyGet") return policyGet();
+    if (input.type === "discoveryPolicySave") return policySave(input.policy);
+    if (input.type === "discoveryStatus") return discoveryStatus();
+    if (input.type === "discoveriesList") return discoveriesList();
+    throw new Error("Unsupported extension message");
+  };
+  void task().then(value => reply({ ok: true, value }), error => reply({ ok: false, error: error instanceof Error ? error.message : "Extension failed" }));
+  return true;
 });
-connectNative();
+
+async function lifecycle() {
+  connect();
+  await chrome.alarms.create("workspace-reconnect", { periodInMinutes: 1 });
+  await chrome.alarms.clear("daily-discovery");
+  await chrome.alarms.clear("submission-session-refresh");
+  await chrome.alarms.create("discovery-session-demand", { periodInMinutes: 1 });
+  void refreshDueDiscovery().catch(() => undefined);
+}
+
+chrome.runtime.onStartup.addListener(() => { void lifecycle(); });
+chrome.runtime.onInstalled.addListener(() => { void lifecycle(); });
+chrome.alarms.onAlarm.addListener(alarm => {
+  if (alarm.name === "workspace-reconnect") connect();
+  if (alarm.name === "discovery-session-demand") void refreshDueDiscovery().catch(() => undefined);
+});
+chrome.notifications.onClicked.addListener(() => { void chrome.tabs.create({ url: chrome.runtime.getURL("inbox.html") }); });
+chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
+  if (change.status !== "complete" || !tab.url) return;
+  const url = new URL(tab.url);
+  if (url.origin === WATERLOOWORKS_ORIGIN) {
+    void browserResearch.health().then(async health => {
+      if (health.authenticated) {
+        await clearSignInEpisode();
+      }
+    });
+  }
+  const supported = [WATERLOOWORKS_ORIGIN, "https://adfs.uwaterloo.ca", "https://sts.uwaterloo.ca"];
+  if (supported.includes(url.origin)) {
+    void isSignInTab(tabId).then(async signingIn => signingIn && await chrome.permissions.contains({ origins: [`${url.origin}/*`] }))
+      .then(allowed => allowed ? chrome.scripting.executeScript({ target: { tabId }, func: continueRecognizedSignIn }) : undefined)
+      .catch(() => undefined);
+  }
+});
+
+void lifecycle();
+
+// Record browser sign-in changes without exporting cookies from this event handler.
+chrome.cookies.onChanged.addListener(({cookie})=>{
+  if(cookie.domain.replace(/^\./,"")==="waterlooworks.uwaterloo.ca")void markSubmissionSessionDirty().catch(()=>{});
+});

@@ -1,10 +1,19 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { BunStdioServerTransport } from "./bun-stdio.js";
+import { ExtensionResearchClient } from "../../bridge/src/extension-proxy.js";
+import { registerDiscoveryTools } from "./discovery-tools.js";
+import { VERSION } from "../../shared/src/version.js";
+import type { ApplicationWorkflow } from "../../application-workflow/src/workflow.js";
+import { createApplicationWorkflow } from "./application-config.js";
+import { registerApplicationTools } from "./application-tools.js";
+import { ApplicationMcpServer } from "./application-server.js";
+import { registerWorkspaceTools } from "./workspace-tools.js";
+import { Workspace } from "../../workspace/src/store.js";
+import type { FileOpener } from "../../workspace/src/open.js";
+import { WaterlooWorksSource } from "../../workspace/src/sources/waterlooworks.js";
 import {
-  BrowserExtensionSessionProvider,
-  WaterlooWorksClient,
+  type WaterlooWorksClient,
   type JobPosting,
   type JobSearchQuery,
   type JobSearchItem,
@@ -13,7 +22,11 @@ import {
 } from "../../waterlooworks-client/src/index.js";
 
 export interface McpServerDependencies {
-  client?: WaterlooWorksClient;
+  client?: Pick<WaterlooWorksClient, "bootstrap" | "health" | "searchJobs" | "getJob" | "getSearchMetadata" | "getAccountOverview" | "getDocumentMetadata" | "getEmployerReport">;
+  applications?: ApplicationWorkflow;
+  workspace?: Workspace;
+  /** Opens newly created PDFs for the user; tests inject a no-op. */
+  openFile?: FileOpener;
 }
 
 type LooseToolRegistrar = (
@@ -43,10 +56,43 @@ interface EmployerReportToolArgs {
 }
 
 const WATERLOOWORKS_MCP_INSTRUCTIONS = `
-You are using a local, read-only WaterlooWorks MCP server. Use it to find and
-evaluate University of Waterloo co-op postings. Do not ask the user to paste
-cookies, session IDs, action tokens, or passwords, and do not attempt login or
-application-submission actions.
+You are using a local WaterlooWorks MCP server for research and human-approved
+Full-Cycle co-op applications. Do not ask the user to paste cookies, session
+IDs, action tokens, or passwords. Sign-in remains in the user's browser.
+
+Local workspace (data/): the user's profile, experience draft, resume variants,
+saved jobs, cover letters, and application plans are stored by the workspace_*,
+profile_*, experience_save, resume_*, jobs_*, job_*, cover_letter_save, and
+application_plan_save tools. Use them instead of writing files by hand. Resume
+and cover letter content must come only from the user's experience draft and
+profile. Plans become "ready" for the local dashboard (dashboard_open); only the
+user applies from that page. Never open, click, or call the dashboard API.
+
+Work authorization for Canadian citizens (profile workAuthorization.canada =
+"citizen"): they may work for any employer in Canada with no permit, visa, or
+sponsorship. Answer "eligible to work in Canada" Yes and "require sponsorship
+in Canada" No. Citizenship makes them eligible to apply for Canadian security
+clearance but does not mean they hold one. Canadian citizenship is not US work
+authorization: unless the profile records US citizenship or a green card,
+answer "authorized to work in the US" No and "require US sponsorship" per
+needsSponsorship.unitedStates (usually Yes; co-op terms usually need a J-1).
+Canadian citizens are not "U.S. persons" for ITAR/EAR. Remote work follows
+where it is performed. Never infer statuses the profile does not state.
+
+Application workflow:
+1. Read waterlooworks_get_application_form and waterlooworks_list_documents.
+2. Use an explicit uploaded resume ID, exact question IDs/options, and local
+   PDF paths for cover letters and custom attachments. Never invent personal answers.
+3. waterlooworks_prepare_application validates a local draft without writes.
+4. waterlooworks_submit_application returns a localhost review URL. The human
+   must inspect documents/answers and approve. Local attachments require upload
+   approval followed by review_required and a second reviewUrl for exact
+   server-processed PDFs before final submission. Agents must
+   never click approval controls or call review approval endpoints.
+5. Poll waterlooworks_get_operation_status. Never retry uncertain submissions.
+Uploads use the same human review mechanism. Global default changes are unsupported.
+Only Full-Cycle internal applications are supported. Report employer website
+steps as outstanding; an internal receipt does not complete external steps.
 
 Recommended research workflow:
 1. Check connectivity with waterlooworks_status when starting a task, when
@@ -87,16 +133,20 @@ Tool selection:
   document defaults.
 
 Authentication recovery:
-If status reports authenticated=false, the user must sign in to WaterlooWorks
-in the same Chromium profile used by the extension. The extension re-exports
-cookies when they change and the client refreshes its session on retry. Recheck
-status after sign-in; if it remains false, have the user reload the extension
+If status reports authenticated=false, the connected extension automatically
+opens the WaterlooWorks sign-in flow in its browser profile, reusing an existing
+WaterlooWorks tab where possible. Authentication failures during requests also
+open sign-in. Ask the user to complete login in that tab, then recheck status
+and retry read requests. Failed writes are never replayed automatically. If no
+tab opens, use the extension's Sign in control. The extension owns all
+WaterlooWorks requests and keeps credentials in the browser. If status
+remains false after sign-in, have the user reload the extension
 and reconnect the MCP server. Never expose or request credential material.
 
 When presenting results, keep the search shortlist separate from full posting
 facts and employer analytics. State which fields are absent, avoid treating
-inferred fit as WaterlooWorks data, and remember that all exposed operations
-are read-only.
+inferred fit as WaterlooWorks data. Unknown forms, changed inputs, broken
+documents, existing applications, and unapproved writes must stop safely.
 `.trim();
 
 function publicSearchItem(item: JobSearchItem): Record<string, unknown> {
@@ -122,9 +172,10 @@ function errorResult(error: unknown): CallToolResult {
 }
 
 export function createWaterlooWorksMcpServer(dependencies: McpServerDependencies = {}): McpServer {
-  const client = dependencies.client ?? new WaterlooWorksClient(new BrowserExtensionSessionProvider());
-  const server = new McpServer(
-    { name: "waterlooworks-mcp", version: "0.1.0" },
+  const client = dependencies.client ?? new ExtensionResearchClient();
+  const applications = dependencies.applications ?? createApplicationWorkflow();
+  const server = new ApplicationMcpServer(applications,
+    { name: "waterlooworks-mcp", version: VERSION },
     { instructions: WATERLOOWORKS_MCP_INSTRUCTIONS },
   );
   // The SDK's recursive Zod compatibility types are expensive for Bun's
@@ -141,8 +192,8 @@ export function createWaterlooWorksMcpServer(dependencies: McpServerDependencies
     async (_args: unknown): Promise<CallToolResult> => {
       try {
         const health: WaterlooWorksHealth = await client.health();
-        const structuredHealth: Record<string, unknown> = { ...health };
-        return { content: [{ type: "text", text: resultText(health) }], structuredContent: structuredHealth };
+        const structuredHealth: Record<string, unknown> = { ...health, applications: applications.capabilities };
+        return { content: [{ type: "text", text: resultText(structuredHealth) }], structuredContent: structuredHealth };
       } catch (error) {
         return errorResult(error);
       }
@@ -287,20 +338,9 @@ export function createWaterlooWorksMcpServer(dependencies: McpServerDependencies
     },
   );
 
+  registerApplicationTools(server, applications);
+  registerDiscoveryTools(server);
+  const workspace = dependencies.workspace ?? new Workspace();
+  registerWorkspaceTools(server, workspace, new Map([["waterlooworks", new WaterlooWorksSource(client, applications)]]), dependencies.openFile);
   return server;
-}
-
-async function main(): Promise<void> {
-  const server = createWaterlooWorksMcpServer();
-  const transport = new BunStdioServerTransport();
-  await server.connect(transport);
-  console.error(JSON.stringify({ event: "mcp.ready", transport: "stdio" }));
-  await transport.waitForClose();
-}
-
-if (import.meta.main) {
-  main().catch((error: unknown) => {
-    console.error(JSON.stringify({ event: "mcp.error", message: error instanceof Error ? error.message : "unknown error" }));
-    process.exitCode = 1;
-  });
 }

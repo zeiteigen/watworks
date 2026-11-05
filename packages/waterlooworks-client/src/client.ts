@@ -1,3 +1,4 @@
+import { sha256 } from "../../shared/src/sha256.js";
 import {
   WATERLOOWORKS_ORIGIN,
   WATERLOOWORKS_JOBS_PATH,
@@ -65,9 +66,7 @@ const silentLogger: WaterlooWorksLogger = {
 };
 
 function actionFingerprint(value: string): string {
-  const hasher = new Bun.CryptoHasher("sha256");
-  hasher.update(value);
-  return `action-${hasher.digest("hex").slice(0, 12)}`;
+  return `action-${sha256(value).slice(0, 12)}`;
 }
 
 function cookieHeader(cookies: BrowserCookie[]): string {

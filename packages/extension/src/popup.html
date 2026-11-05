@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="dashboard.css">
+  <link rel="stylesheet" href="popup-layout.css">
+  <title>watworks</title>
+</head>
+<body class="popup"><main>
+  <div class="masthead">
+    <span class="wordmark"><svg viewBox="0 0 64 64" width="32" height="40" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M32.2 4.5 31.8 55 M32 6 20 21 44 20 M32 17 13 37 51 36 M32 30 6 53 58 52"/></g></svg>watworks</span>
+    <span class="workspace-note">Your workspace</span>
+  </div>
+  <p id="status" role="status" aria-live="polite">Checking connection…</p>
+  <div class="popup-actions" aria-label="Workspace actions">
+    <button id="workspace" type="button">Open Dashboard <span aria-hidden="true">↗</span></button>
+    <button id="start-service" type="button" class="secondary">Start workspace service</button>
+  </div>
+  <nav class="popup-links" aria-label="More tools">
+    <a href="inbox.html" target="_blank" rel="noopener">Discovery inbox and settings <span aria-hidden="true">↗</span></a>
+    <a hidden href="submission-settings.html" target="_blank" rel="noopener">Submission server <span aria-hidden="true">↗</span></a>
+    <a hidden id="submission-developer" href="diagnostics.html" target="_blank" rel="noopener">Tab diagnostics <span aria-hidden="true">↗</span></a>
+  </nav>
+</main><script type="module" src="popup.js"></script></body>
+</html>

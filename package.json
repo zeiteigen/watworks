@@ -5,18 +5,22 @@
   "type": "module",
   "description": "Local WaterlooWorks MCP server and browser-session bridge",
   "scripts": {
-    "build": "bun node_modules/typescript/bin/tsc -p tsconfig.build.json",
-    "typecheck": "bun node_modules/typescript/bin/tsc -p tsconfig.json --noEmit",
-    "analyze-har": "bun scripts/analyze-har.ts",
-    "verify-har": "bun scripts/verify-har.ts",
     "build:extension": "bun packages/extension/build.ts",
-    "build:bridge": "bun build packages/bridge/src/index.ts --compile --outfile dist/waterlooworks-bridge",
-    "test": "bun run typecheck && bun test",
-    "start:mcp": "bun packages/mcp-server/src/index.ts",
-    "start:bridge": "bun packages/bridge/src/index.ts"
+    "build:release": "bun scripts/build-release.ts",
+    "verify:release": "bun scripts/verify-release.ts",
+    "start:mcp": "bun packages/mcp-server/src/cli.ts",
+    "setup": "bun scripts/setup.ts",
+    "dashboard": "bun packages/mcp-server/src/cli.ts --dashboard",
+    "install:native-host": "bun packages/mcp-server/src/cli.ts --install-native-host",
+    "build": "bun run typecheck && bun run build:extension",
+    "typecheck": "bun node_modules/typescript/bin/tsc -p tsconfig.json --noEmit",
+    "test": "bun run typecheck && bun test"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.2",
+    "linkedom": "^0.18.14",
+    "pdf-lib": "^1.17.1",
+    "playwright": "^1.64.1",
     "zod": "^3.25.76"
   },
   "devDependencies": {
