@@ -25,7 +25,7 @@ export const APPLICATION_APPROVAL_SCRIPT = String.raw`
     }
     armed = false;
     dispatching = true;
-    const executionMode = $('application-mode').value;
+    const executionMode = $('application-mode').value || undefined;
     const chosen = jobs.filter(j => inQueue(j) && j.status.state === 'ready' && !j.active && selected.has(j.key));
     selected.clear();
     for (const job of chosen) pendingApplications.set(job.key, 'Waiting to start…');

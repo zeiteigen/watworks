@@ -1,0 +1,56 @@
+name: Release Chrome extension
+
+on:
+  push:
+    tags: ["extension-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: extension-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # Releases and signing credentials belong only to the public mirror.
+    if: github.repository == 'zeiteigen/watworks'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - run: bunx playwright install chromium --with-deps
+      - run: bun test
+      - name: Package and verify signed CRX3
+        env:
+          SIGNING_KEY: ${{ secrets.EXTENSION_SIGNING_KEY }}
+          WAT_EXTENSION_SIGNING_KEY_FILE: ${{ runner.temp }}/extension-signing.pem
+          CHROME_BIN: /usr/bin/google-chrome
+        run: |
+          test -n "$SIGNING_KEY"
+          umask 077
+          printf '%s' "$SIGNING_KEY" > "$WAT_EXTENSION_SIGNING_KEY_FILE"
+          bun run build:extension-release
+      - name: Remove signing key
+        if: always()
+        env:
+          KEY_FILE: ${{ runner.temp }}/extension-signing.pem
+        run: bun -e 'await import("node:fs/promises").then(fs => fs.rm(process.env.KEY_FILE, {force:true}))'
+      - name: Publish extension release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          VERSION=$(bun -e 'console.log((await Bun.file("package.json").json()).version)')
+          gh release create "extension-v$VERSION" dist/releases/waterlooworks-extension-v* \
+            --target "$GITHUB_SHA" --title "WaterlooWorks Chrome extension v$VERSION" \
+            --notes-file scripts/extension-release/notes.md

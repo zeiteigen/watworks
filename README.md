@@ -43,3 +43,16 @@ The extension dashboard, local MCP server, workspace, native startup helper, and
 shared parsing/validation packages are included. Personal profiles, resumes,
 application records, cookies, build output, and server implementation are excluded.
 Runtime workspace files live in gitignored `data/`.
+
+## Extension downloads
+
+Signed CRX, unpacked ZIP, and checksums are available from
+[GitHub Releases](https://github.com/zeiteigen/watworks/releases). For Windows
+and macOS developer installs, extract the ZIP and load its folder unpacked.
+Chrome normally requires Web Store distribution for packed extensions there.
+The local workspace and native startup helper still require `bun run setup`.
+
+The signing identity is `onlcepldlajaajfjldnbipkbffaficjh`. If updating from the
+older unpacked ID, update your workspace, run setup, reinstall the extension,
+and restart the local service when no application is active. Sign in and
+configure the new extension again; your local `data/` workspace stays in place.

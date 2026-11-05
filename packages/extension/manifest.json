@@ -22,7 +22,7 @@
     "service_worker": "background.js",
     "type": "module"
   },
-  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAz+RwTFyVSNkViDNirZHwscqQ+ItlwFtRVg5x5r2CCy1UMUwrODAWFipt1PCa5r7GX2XjHvRcl8M2a7aqLN3fhNuRP4yKD4GeFO6WdchcvbiEG1dBIDymRrTDF+NjebUxUtAtWJT88DKhy23Tg+/C4sVSWnry9unB0iSxA/DgovfVVuRZ151h31wiesOpGnWQ8broJSxaYeplh8n+FiEBNQFi4Jj5FTFbgn1KmC/0end9POzLVvTwDBaLhrrV1TK+GdKPxXyRF3W/UN1EzkhMVj7VuMLhiEcUndSXve8gJm8/AAvbqv7MyIbSlKu0pzEHsjwSnmOs047m4avnu1e4rwIDAQAB",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvVpTCnYOFTjEsKaMiKtAH2kN/UtwOdt1Gouvz8/SPmwdm27u/a52K5EGrmmZn87qgh1379dYZH2yujqd1L3UMNmVcQl8DzuUQhdxYXGlMs4hDSmBErTXkLHNPes4A/c1tYUZns/Af05O7KOFYJIbcJsOtqYKq3QWiAxjgwOq6VSeAM2AUF8tjqY5HRflSDnLJ87BqZIG01lVceVfGTMeafSSZiGb5/bkzUNeJYFuNcDxW3iIkVfR82iNu7A6zZPeuY+Ywqt0zLeLy7UYelOsI93JtcAvp2C5UVJm9/kLO19P8bD4o1+6/HcOA8hxIir4AeuEN7/57DkbIXuZlqdbMwIDAQAB",
   "optional_host_permissions": [
     "https://*/*",
     "http://localhost/*",

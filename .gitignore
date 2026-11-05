@@ -29,3 +29,8 @@ waterlooworks-har-report*.json
 # Local Worker secrets.
 .dev.vars
 .dev.vars.*
+
+# Extension signing keys must never enter source control.
+*.pem
+*.key
+*.p12

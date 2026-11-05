@@ -5,6 +5,7 @@
   "type": "module",
   "description": "Local WaterlooWorks MCP server and browser-session bridge",
   "scripts": {
+    "build:extension-release": "bun scripts/extension-release/build.ts",
     "build:extension": "bun packages/extension/build.ts",
     "build:release": "bun scripts/build-release.ts",
     "verify:release": "bun scripts/verify-release.ts",

@@ -259,6 +259,8 @@ describe("job viewer", () => {
 
   test("first Apply prepares the session and refreshes state before arming approval", async () => {
     const ui = await viewer();
+    // DOM implementations may expose an unselected mode as an empty string.
+    Object.defineProperty(ui.document.getElementById("application-mode")!, "value", { get: () => "" });
     ui.document.getElementById("select-all")!.click();
     ui.document.getElementById("apply")!.click();
     await ui.settle();
