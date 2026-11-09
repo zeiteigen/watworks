@@ -278,6 +278,22 @@ export class AttemptLedger {
     }).immediate();
   }
 
+  /** An upload verified absent from the library may be attempted again; its history is retained. */
+  authorizeUploadRetry(attemptId: string, expectedUpdatedAt: number, evidence: { accountKey: string; operationKey: string; checkedAt: number }): AttemptRecord {
+    return this.database.transaction(() => {
+      const attempt = this.get(attemptId);
+      const now = Date.now();
+      if (!attempt || attempt.kind !== "upload_document" || !["succeeded", "failed", "outcome_unknown"].includes(attempt.state) || attempt.retryAuthorizedAt !== null) throw new Error("An earlier upload of this document is still in progress");
+      if (attempt.updatedAt !== expectedUpdatedAt || Math.max(attempt.createdAt, attempt.updatedAt) > now - 120_000) throw new Error("An earlier upload of this document is too recent to retry; wait two minutes");
+      if (attempt.accountKey !== evidence.accountKey || attempt.operationKey !== evidence.operationKey) throw new Error("Upload retry evidence does not match the attempt");
+      if (!Number.isSafeInteger(evidence.checkedAt) || evidence.checkedAt < now - 60_000 || evidence.checkedAt > now + 5_000) throw new Error("Upload retry evidence is stale");
+      this.database.query("UPDATE application_attempts SET retryAuthorizedAt = ?, retryEvidence = ?, accountReleasedAt = COALESCE(accountReleasedAt, ?) WHERE attemptId = ?")
+        .run(now, JSON.stringify({ ...evidence, source: "dashboard_user", libraryAbsent: true, freshApprovalRequired: true }), now, attemptId);
+      this.recordEvent(attemptId, "retry_authorized");
+      return this.get(attemptId)!;
+    }).immediate();
+  }
+
   recordEvent(attemptId: string, event: string, failure?: OperationFailure): void {
     this.database.query("INSERT INTO application_events(attemptId, at, event, failure) VALUES (?, ?, ?, ?)")
       .run(attemptId, Date.now(), event, failure ? JSON.stringify(operationFailureSchema.parse(failure)) : null);

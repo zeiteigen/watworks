@@ -49,7 +49,7 @@ export function connect(): void {
         }
         const result = publicResult(await executeCommand(command.method, command.args, command.deadline, command.streamProgress?progress=>{
           if(ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:"progress",requestId:command.requestId,progress}));
-        }:undefined)) ?? null;
+        }:undefined,command.approval)) ?? null;
         if (ws.readyState === WebSocket.OPEN) ws.send(wireEncode({ type: "result", requestId: command.requestId, result }));
       } catch (error) {
         if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "result", requestId: command.requestId, error: (error instanceof BrowserOperationError ? encodeOperationFailure(error.failure) : error instanceof Error ? error.message : "Extension operation failed").slice(0, 1000) }));

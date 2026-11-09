@@ -70,6 +70,6 @@ fill-only, explain the accessible-desktop requirement and available capability; 
 claim the form was filled or submitted by this skill.
 
 Never open the dashboard, call its HTTP routes, or operate approval controls.
-Do not call `waterlooworks_submit_application`, upload documents, change defaults,
-or automate an external application site in this preparation workflow. Write
-personal workspace data through MCP tools, never by editing `data/` files.
+Agents have no tool that uploads, submits, or changes defaults, and the extension
+refuses those writes without an approval minted by the user's click. Do not try to
+work around that, or automate an external application site. Write personal workspace data through MCP tools, never by editing `data/` files.

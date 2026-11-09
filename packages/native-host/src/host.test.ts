@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { NATIVE_HOST_ORIGIN } from "../../shared/src/native-host.js";
+import { nativeHostWrapper } from "./install.js";
 import { handleNativeRequest } from "./host.js";
 import { encodeMessage, readMessage } from "./protocol.js";
 import { nativeHostDirectories } from "./install.js";
@@ -61,4 +62,13 @@ test("Chrome-style native subprocess returns framed JSON and reuses the matching
     await service.stop(true);
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("the startup wrapper pins the data directory and attempt ledger", () => {
+  const script = nativeHostWrapper({ dataRoot: "/data's", port: "39452", ledgerPath: "/state/attempts.sqlite", command: ["/bin/bun", "/repo/cli.ts"], documentRoots: "/docs" });
+  expect(script).toContain("export WAT_DATA_DIR='/data'\\''s'\n");
+  expect(script).toContain("export WATERLOOWORKS_LEDGER_PATH='/state/attempts.sqlite'\n");
+  expect(script).toContain("export WATERLOOWORKS_DOCUMENT_ROOTS='/docs'\n");
+  expect(script).toEndWith(`exec '/bin/bun' '/repo/cli.ts' --native-host "$@"\n`);
+  expect(nativeHostWrapper({ dataRoot: "/d", port: "1", ledgerPath: "/l", command: ["/release/app"] })).not.toContain("DOCUMENT_ROOTS");
 });

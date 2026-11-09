@@ -1,7 +1,9 @@
 import type { SubmissionRecovery } from "./submission-recovery.js";
 import { discardExpiredJobs, jobExpired } from "./queue-maintenance.js";
-import { EXPECTED_EXTENSION_ID } from "../../shared/src/extension-protocol.js";
-import { captureApplication, freezeApplication } from "../../workspace/src/approved-snapshot.js";
+import { EXPECTED_EXTENSION_ID, writeApprovalTokenSchema, type WriteApprovalAction } from "../../shared/src/extension-protocol.js";
+import { captureApplication, freezeApplication, reviewHash } from "../../workspace/src/approved-snapshot.js";
+import { readApplicationPdf } from "../../application-workflow/src/files.js";
+import { basename } from "node:path";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { VERSION } from "../../shared/src/version.js";
@@ -46,19 +48,22 @@ export interface DashboardBackend {
   applier: Applier;
   discovery?: Pick<ExtensionCommandProxy, "call">;
   submissionStatus?(): Promise<{ connected:boolean; authenticated:boolean;fillOnly:boolean;binding?:string }>;
+  /** Asks the extension whether a human click minted this approval; defaults to the broker. */
+  writeApprovals?: { verify(token: string, action: WriteApprovalAction, target: string): Promise<boolean> };
   health(): Promise<{ authenticated: boolean; bridgeConnected: boolean; bootstrapped: boolean; error?: string }>;
 }
 
 /**
- * Hash of everything the user sees before clicking Apply: plan, answers, and
- * the exact PDF bytes. Apply is refused if any of it changed since the page loaded.
+ * Hash of everything the user sees before clicking Apply: plan, answers, the exact
+ * PDF bytes, and the form version. The page pins it when the user reviews or selects
+ * a job; Apply is refused if the content no longer matches the hash it sends.
  */
-async function approvalHash(workspace: Workspace, key: JobKey, plan: ApplicationPlan): Promise<string> {
+async function contentHash(workspace: Workspace, key: JobKey, plan: ApplicationPlan): Promise<string> {
   const files: Record<string, string> = {};
   const read = async (path: string) => sha256(new Uint8Array(await readFile(path)));
   files.resume = await read(workspace.paths.resume(plan.resumeVariant).pdf).catch(() => "missing");
   for (const attachment of plan.attachments) files[attachment.requirementId] = await read(attachmentPath(workspace, key, attachment)).catch(() => "missing");
-  return sha256(JSON.stringify({ plan, files }));
+  return reviewHash(plan, files, (await workspace.getForm(key))?.version ?? null);
 }
 
 function questionLabels(form: ApplicationForm | undefined, plan: ApplicationPlan) {
@@ -74,15 +79,25 @@ function boundApproval(hash:string,binding:string|undefined):string { return bin
 
 async function listItem(backend: DashboardBackend, job: JobRecord, binding?:string) {
   const key = parseJobKey(job.key);
-  const pending = backend.applier.pending(key);
+  const content = job.plan ? await contentHash(backend.workspace, key, job.plan) : null;
   return {
     key: job.key, summary: job.posting.summary, status: job.status, rank: job.plan?.rank ?? null, fit: job.plan?.fit ?? null,
     caveats: job.plan?.caveats ?? [], resumeVariant: job.plan?.resumeVariant ?? null, documents: job.documents,
     active: backend.applier.isActive(key),
     manualApply: manualApplyLink(key.source, key.jobId) ?? null,
-    approvalHash: job.plan ? boundApproval(await approvalHash(backend.workspace, key, job.plan),binding) : null,
-    ...(pending ? { confirmation: { manifestHash: pending.manifestHash, documents: pending.documents, fillOnly: pending.fillOnly } } : {}),
+    reviewHash: content,
+    approvalHash: content ? boundApproval(content,binding) : null,
   };
+}
+
+/** Name each attachment the plan will submit, so the user can identify and open it. */
+async function attachmentDetails(workspace: Workspace, key: JobKey, plan: ApplicationPlan, form: ApplicationForm | undefined) {
+  const documents = await workspace.listJobDocuments(key);
+  return plan.attachments.map(item => ({
+    requirementId: item.requirementId, kind: item.kind,
+    label: form?.requirements.find(slot => slot.id === item.requirementId)?.label ?? item.requirementId,
+    name: item.kind === "cover_letter" ? "Cover letter" : item.kind === "document" ? documents.find(doc => doc.kind === "document" && doc.id === item.document)?.title ?? item.document : basename(item.path),
+  }));
 }
 
 async function detail(backend: DashboardBackend, key: JobKey) {
@@ -96,7 +111,7 @@ async function detail(backend: DashboardBackend, key: JobKey) {
     questions: form?.questions ?? null,
     formBlockers: form?.blockers ?? [],
     answers: plan ? questionLabels(form, plan) : [],
-    attachments: plan?.attachments.map(item => ({ requirementId: item.requirementId, label: form?.requirements.find(slot => slot.id === item.requirementId)?.label ?? item.requirementId, kind: item.kind })) ?? [],
+    attachments: plan ? await attachmentDetails(workspace, key, plan, form) : [],
     externalSteps: form?.externalSteps ?? [],
   };
 }
@@ -112,6 +127,14 @@ async function readBody(request: Request): Promise<Record<string, unknown> | und
 export function createDashboardFetch(origin: () => string, backend: DashboardBackend): (request: Request) => Promise<Response> {
   const { workspace, applier } = backend;
   const discovery = backend.discovery ?? new ExtensionCommandProxy();
+  const verify = backend.writeApprovals?.verify.bind(backend.writeApprovals) ?? (async (token: string, action: WriteApprovalAction, target: string) =>
+    (await discovery.call<{ valid?: unknown }>("verifyWriteApproval", token, action, target))?.valid === true);
+  /** Fails closed: a missing, invalid, or unverifiable approval changes nothing. */
+  const clickApproved = async (body: Record<string, unknown> | undefined, action: WriteApprovalAction, target: string): Promise<boolean> => {
+    const token = writeApprovalTokenSchema.safeParse(body?.approval);
+    return token.success && await verify(token.data, action, target).catch(() => false);
+  };
+  const needsClick = () => json({ error: "Approve this action from the WaterlooWorks extension dashboard." }, 403);
   const route = async (request: Request): Promise<Response> => {
     try {
       const expected = origin();
@@ -146,6 +169,7 @@ export function createDashboardFetch(origin: () => string, backend: DashboardBac
       if (release && request.method === "POST") {
         if (!backend.recovery) return json({ error: "Submission recovery is unavailable" }, 503);
         const body = await readBody(request);
+        if (!await clickApproved(body, "release", release[1]!)) return needsClick();
         if (!body || body.acknowledged !== true || !Number.isSafeInteger(body.updatedAt) || typeof body.reason !== "string" || !body.reason.trim() || body.reason.length > 500) return json({ error: "Confirm the release and provide a reason" }, 400);
         try { backend.recovery.release(release[1]!, body.updatedAt as number, body.reason); }
         catch (error) { return json({ error: error instanceof Error ? error.message : "Block could not be released" }, 409); }
@@ -215,7 +239,7 @@ export function createDashboardFetch(origin: () => string, backend: DashboardBac
         return json({ health, ...(submission ? {submission} : {}), ...(backend.recovery ? { submissionBlocks: await backend.recovery.list() } : {}), profile: profile ? { name: profile.name } : null, jobs: await Promise.all(jobs.map(job => listItem(backend, job, submission?.binding))) });
       }
 
-      const match = /^\/api\/jobs\/([a-z0-9-]+)\/([A-Za-z0-9_-]+)(?:\/(apply|confirm|remove|requeue|recheck|unlock-retry|recover)|\/files\/(resume|cover-letter|doc-[a-z0-9-]+|processed-[A-Za-z0-9_-]+))?$/.exec(url.pathname);
+      const match = /^\/api\/jobs\/([a-z0-9-]+)\/([A-Za-z0-9_-]+)(?:\/(apply|remove|requeue|recheck|unlock-retry|recover)|\/files\/(resume|cover-letter|doc-[a-z0-9-]+)|\/attachments\/([^/]{1,512}))?$/.exec(url.pathname);
       if (!match) return json({ error: "Not found" }, 404);
       const key = parseJobKey(`${match[1]}:${match[2]}`);
       const status = await workspace.getStatus(key);
@@ -223,10 +247,6 @@ export function createDashboardFetch(origin: () => string, backend: DashboardBac
 
       if (request.method === "GET" && match[4]) {
         const file = match[4];
-        if (file.startsWith("processed-")) {
-          const bytes = applier.documentBytes(key, file.slice("processed-".length));
-          return bytes ? pdf(bytes) : json({ error: "Document not found" }, 404);
-        }
         const plan = await workspace.getPlan(key);
         const path = file === "resume" ? plan && workspace.paths.resume(plan.resumeVariant).pdf
           : file.startsWith("doc-") ? workspace.paths.jobDocument(key, file.slice("doc-".length)).pdf
@@ -234,20 +254,28 @@ export function createDashboardFetch(origin: () => string, backend: DashboardBac
         const bytes = path ? await readFile(path).catch(() => undefined) : undefined;
         return bytes ? pdf(new Uint8Array(bytes)) : json({ error: "Document not found" }, 404);
       }
+      if (request.method === "GET" && match[5]) {
+        // Exactly what the plan would submit, under the same root and PDF checks.
+        const requirementId = decodeURIComponent(match[5]);
+        const attachment = (await workspace.getPlan(key))?.attachments.find(item => item.requirementId === requirementId);
+        const file = attachment && await readApplicationPdf(attachmentPath(workspace, key, attachment), [workspace.paths.root]).catch(() => undefined);
+        return file ? pdf(file.bytes) : json({ error: "Document not found" }, 404);
+      }
       if (request.method === "GET" && !match[3]) return json(await detail(backend, key));
 
       if (request.method === "POST" && match[3]) {
-        if (["apply", "confirm", "requeue", "recheck", "unlock-retry"].includes(match[3])) {
+        const body = await readBody(request);
+        if ((match[3] === "apply" || match[3] === "recover" || match[3] === "unlock-retry") && !await clickApproved(body, match[3], `${key.source}:${key.jobId}`)) return needsClick();
+        if (["apply", "requeue", "recheck", "unlock-retry"].includes(match[3])) {
           const posting = await workspace.getPosting(key);
           if (posting && await jobExpired(workspace, { key: `${key.source}:${key.jobId}`, posting })) {
             await discardExpiredJobs(workspace, item => applier.isActive(item));
             return json({ error: "The application deadline has passed. This job cannot be restored or submitted." }, 409);
           }
         }
-        const body = await readBody(request);
         if (!body) return json({ error: "Invalid request" }, 400);
         if (["remove", "requeue", "recheck", "recover"].includes(match[3]) && applier.isActive(key)) return json({ error: "This application is already queued or submitting" }, 409);
-        if (status.removedFromQueueAt && ["apply", "confirm", "recheck"].includes(match[3])) return json({ error: "Restore this job to the queue first" }, 409);
+        if (status.removedFromQueueAt && ["apply", "recheck"].includes(match[3])) return json({ error: "Restore this job to the queue first" }, 409);
         switch (match[3]) {
           case "recover": {
             if (!backend.recovery) return json({ error: "Submission recovery is unavailable" }, 503);
@@ -293,13 +321,9 @@ export function createDashboardFetch(origin: () => string, backend: DashboardBac
             if (typeof body.approvalHash !== "string" || body.approvalHash !== boundApproval(captured.hash,submission?.binding)) return json({ error: "This application changed since the page loaded. Review it again." }, 409);
             const snapshot=await freezeApplication(workspace,captured);
             if(applier.isActive(key) || (await workspace.getStatus(key))?.removedFromQueueAt){await snapshot.dispose();return json({error:"Application is already queued or was removed"},409);}
-            applier.enqueue(key, item => applier.apply(item,snapshot,body.executionMode === "fill_only" ? "fill_only" : "submit",submission?.binding));
+            applier.enqueue(key, item => applier.apply(item,snapshot,body.executionMode === "fill_only" ? "fill_only" : "submit",submission?.binding,body.approval as string));
             return json({ queued: true }, 202);
           }
-          case "confirm":
-            if (typeof body.manifestHash !== "string" || status.state !== "confirm_required") return json({ error: "Nothing to confirm" }, 409);
-            applier.enqueue(key, item => applier.confirm(item, body.manifestHash as string));
-            return json({ queued: true }, 202);
         }
       }
       return json({ error: "Method not allowed" }, 405);

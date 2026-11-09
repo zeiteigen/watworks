@@ -11,6 +11,7 @@ import { applicationDeadline } from "./application-deadline.js";
 import { buildFormFields, fieldsRecord, jsonObject, navigationFields, pageDocument, sourceAction, text } from "./application-fields.js";
 import { discoverPageAction, parseBootstrapPage, parsePageLiteral, requirePostingAction } from "./bootstrap.js";
 import { parseApplicationPage } from "./application-page.js";
+import { pinSystemDocument } from "./system-document.js";
 import { normalizeJobPosting } from "./normalize.js";
 import { AuthenticationExpiredError, ProtocolChangedError, WaterlooWorksServerError } from "./errors.js";
 import type { FetchLike } from "./session.js";
@@ -236,7 +237,7 @@ export class BrowserApplicationReads {
     if (page.uploadSaveFields.postingId !== jobId || page.uploadSaveFields.uiForm !== "true") blockers.push("Attachment upload identity changed");
     for (const requirement of page.requirements) {
       if (requirement.role !== "system" || !requirement.selectedDocument) continue;
-      try { requirement.selectedDocument = (await this.snapshot(context, { ...requirement.selectedDocument, state: "ready" })).document; }
+      try { requirement.selectedDocument = pinSystemDocument((await this.snapshot(context, { ...requirement.selectedDocument, state: "ready" })).document); }
       catch { blockers.push(`System document cannot be read: ${requirement.label}`); }
     }
     const form: ApplicationForm = {

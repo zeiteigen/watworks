@@ -20,6 +20,8 @@ import { Applier } from "./applier.js";
 import { createDashboardFetch } from "./server.js";
 
 const ORIGIN = "http://127.0.0.1:39452";
+const CLICK = "c".repeat(43);
+const CLICK_ROUTE = /\/(apply|recover|unlock-retry|release)$/;
 
 class FakeGateway implements ApplicationGateway {
   capabilities = { upload: true, defaults: true, submit: true };
@@ -77,7 +79,7 @@ async function fixture(discovery?: { call<T>(method: ExtensionMethod, ...args: u
   const workspace = new Workspace(join(root, "data"));
   await workspace.scaffold();
   const gateway = new FakeGateway();
-  const reviews = new ReviewService({ serve: false });
+  const reviews = new ReviewService();
   const workflow = new ApplicationWorkflow({ gateway, documentRoots: [workspace.paths.root], ledgerPath: join(root, "ledger.sqlite"), reviews });
   cleanup.push(async () => { await workflow.close(); await rm(root, { recursive: true, force: true }); });
 
@@ -94,13 +96,19 @@ async function fixture(discovery?: { call<T>(method: ExtensionMethod, ...args: u
   await workspace.savePlan(key, plan, blockers);
 
   const applier = new Applier(workspace, workflow, reviews);
-  const handle = createDashboardFetch(() => ORIGIN, { workspace, applier, recovery: new SubmissionRecovery(workspace, workflow, () => applier.hasActive), health: async () => ({ authenticated: true, bridgeConnected: true, bootstrapped: true }), ...(discovery ? { discovery } : {}), ...(submissionStatus ? {submissionStatus} : {}) });
-  const call = (path: string, init: { method?: string; body?: unknown; headers?: Record<string, string> } = {}) => handle(new Request(`${ORIGIN}${path}`, {
-    method: init.method ?? (init.body === undefined ? "GET" : "POST"),
-    headers: { host: "127.0.0.1:39452", ...(init.body !== undefined ? { origin: ORIGIN, "content-type": "application/json" } : {}), ...init.headers },
-    ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
-  }));
-  return { workspace, gateway, key, call, applier, workflow, ledgerPath: join(root, "ledger.sqlite") };
+  const approvalChecks: Array<[string, string, string]> = [];
+  const writeApprovals = { verify: async (token: string, action: string, target: string) => { approvalChecks.push([token, action, target]); return token === CLICK; } };
+  const handle = createDashboardFetch(() => ORIGIN, { workspace, applier, writeApprovals, recovery: new SubmissionRecovery(workspace, workflow, () => applier.hasActive), health: async () => ({ authenticated: true, bridgeConnected: true, bootstrapped: true }), ...(discovery ? { discovery } : {}), ...(submissionStatus ? {submissionStatus} : {}) });
+  // Stands in for the extension page: real clicks carry a minted approval, unless a test forges a call.
+  const call = (path: string, init: { method?: string; body?: unknown; headers?: Record<string, string>; forged?: boolean } = {}) => {
+    const body = init.body !== undefined && !init.forged && CLICK_ROUTE.test(path) ? { approval: CLICK, ...(init.body as object) } : init.body;
+    return handle(new Request(`${ORIGIN}${path}`, {
+      method: init.method ?? (body === undefined ? "GET" : "POST"),
+      headers: { host: "127.0.0.1:39452", ...(body !== undefined ? { origin: ORIGIN, "content-type": "application/json" } : {}), ...init.headers },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    }));
+  };
+  return { workspace, gateway, key, call, applier, workflow, approvalChecks, ledgerPath: join(root, "ledger.sqlite") };
 }
 
 async function waitFor(workspace: Workspace, key: { source: string; jobId: string }, states: string[]) {
@@ -519,13 +527,6 @@ describe("dashboard", () => {
 
 });
 
-describe("in-process approval", () => {
-  test("is unavailable when the review service serves its own page", () => {
-    const reviews = new ReviewService();
-    expect(() => reviews.approveInProcess("x", "y")).toThrow("non-serving");
-  });
-});
-
 // Use the real workflow and ledger to ensure queue recovery permits a new approval,
 // while leaving every remote write behind an explicit Apply click.
 test("unsubmitted filled forms return to ready after the delay and can be applied to again", async () => {
@@ -647,11 +648,10 @@ test.each(["submit", "fill_only", "changed"] as const)("processed attachments se
   };
   const approvalHash = (await (await f.call("/api/state")).json()).jobs[0].approvalHash;
   expect((await f.call("/api/jobs/waterlooworks/123/apply",{body:{approvalHash,executionMode:mode === "fill_only" ? "fill_only" : "submit"}})).status).toBe(202);
-  const status = await waitFor(f.workspace,f.key,["applied","form_filled","failed","confirm_required"]);
+  const status = await waitFor(f.workspace,f.key,["applied","form_filled","failed"]);
   expect(status.state).toBe(mode === "changed" ? "failed" : mode === "fill_only" ? "form_filled" : "applied");
   expect(stages).toBe(1);
   expect(f.gateway.writes).toEqual({upload:1,submit:mode === "submit" ? 1 : 0});
-  expect(f.applier.pending(f.key)).toBeUndefined();
   if (mode !== "changed") expect(f.gateway.submitted?.documents.find(d=>d.requirementId === "letter")?.storedDocument?.id).toBe("processed-letter");
 });
 
@@ -687,4 +687,125 @@ test("an approved execution pins all workflow phases to its selected endpoint",a
   await waitFor(f.workspace,f.key,["applied"]);
   expect(observed).toEqual([binding]);
   expect(submissionBindingScope.getStore()).toBeUndefined();
+});
+
+describe("write approvals", () => {
+  test.each(["absent", "invalid", "unverifiable"] as const)("a forged apply with an %s approval changes nothing", async kind => {
+    const f = await fixture();
+    const job = (await (await f.call("/api/state")).json()).jobs[0];
+    const before = await f.workspace.getStatus(f.key);
+    const body = { approvalHash: job.approvalHash, ...(kind === "absent" ? {} : { approval: kind === "invalid" ? "x".repeat(43) : "not-a-token" }) };
+    // A forged Origin passes the browser-origin check; the approval is what refuses it.
+    const response = await f.call("/api/jobs/waterlooworks/123/apply", { body, forged: true });
+    expect(response.status).toBe(403);
+    expect(f.applier.isActive(f.key)).toBe(false);
+    expect(await f.workspace.getStatus(f.key)).toEqual(before);
+    expect(f.gateway.writes).toEqual({ upload: 0, submit: 0 });
+  });
+
+  test("every other human decision route refuses a forged call before changing state", async () => {
+    const f = await fixture();
+    const status = await f.workspace.setStatus(f.key, { state: "failed" });
+    const before = await f.workspace.getStatus(f.key);
+    for (const route of ["recover", "unlock-retry"]) expect((await f.call(`/api/jobs/waterlooworks/123/${route}`, { body: { acknowledged: true, updatedAt: status.updatedAt }, forged: true })).status).toBe(403);
+    expect((await f.call("/api/submission-blocks/some-attempt/release", { body: { acknowledged: true, updatedAt: 1, reason: "forged" }, forged: true })).status).toBe(403);
+    expect(await f.workspace.getStatus(f.key)).toEqual(before);
+  });
+
+  test("an expired job is not archived by an unapproved apply", async () => {
+    const f = await fixture();
+    f.gateway.form.deadline = "2000-01-01T00:00:00Z";
+    await f.workspace.saveForm(f.key, f.gateway.form);
+    expect((await f.call("/api/jobs/waterlooworks/123/apply", { body: {}, forged: true })).status).toBe(403);
+    expect((await f.workspace.getStatus(f.key))?.state).toBe("ready");
+  });
+
+  test("checks the approval against the action and exact target", async () => {
+    const f = await fixture();
+    const job = (await (await f.call("/api/state")).json()).jobs[0];
+    expect((await f.call("/api/jobs/waterlooworks/123/apply", { body: { approvalHash: job.approvalHash } })).status).toBe(202);
+    expect(f.approvalChecks).toEqual([[CLICK, "apply", "waterlooworks:123"]]);
+    await waitFor(f.workspace, f.key, ["applied", "failed"]);
+  });
+
+  test("an unreachable extension refuses rather than allowing the action", async () => {
+    const discovery = { call: async <T>(): Promise<T> => { throw new Error("bridge unavailable"); } };
+    const root = await mkdtemp(join(tmpdir(), "wat-dashboard-test-"));
+    cleanup.push(() => rm(root, { recursive: true, force: true }));
+    const workspace = new Workspace(join(root, "data"));
+    await workspace.scaffold();
+    const reviews = new ReviewService();
+    const workflow = new ApplicationWorkflow({ gateway: new FakeGateway(), documentRoots: [workspace.paths.root], ledgerPath: join(root, "ledger.sqlite"), reviews });
+    cleanup.push(() => workflow.close());
+    const key = { source: "waterlooworks", jobId: "123" };
+    await workspace.saveJob(key, { summary: { source: key.source, jobId: key.jobId, title: "T", employer: "E", requiredDocuments: [] }, posting: {} }, "d");
+    const handle = createDashboardFetch(() => ORIGIN, { workspace, applier: new Applier(workspace, workflow, reviews), discovery, health: async () => ({ authenticated: true, bridgeConnected: true, bootstrapped: true }) });
+    const response = await handle(new Request(`${ORIGIN}/api/jobs/waterlooworks/123/apply`, { method: "POST", headers: { host: "127.0.0.1:39452", origin: ORIGIN, "content-type": "application/json" }, body: JSON.stringify({ approval: CLICK }) }));
+    expect(response.status).toBe(403);
+  });
+
+  test("the approval travels to every write of the approved execution", async () => {
+    const f = await fixture();
+    const seen: Array<[string, string | undefined]> = [];
+    const gateway: ApplicationGateway = f.gateway;
+    const upload = f.gateway.uploadDocument.bind(f.gateway);
+    gateway.uploadDocument = async (type, name, file, _account, _attempt, approval) => { seen.push(["upload", approval]); return upload(type, name, file); };
+    const submit = f.gateway.submitApplication.bind(f.gateway);
+    gateway.submitApplication = async (manifest, files, before, _staged, _attempt, approval) => { seen.push(["submit", approval]); return submit(manifest, files, before); };
+    const job = (await (await f.call("/api/state")).json()).jobs[0];
+    expect((await f.call("/api/jobs/waterlooworks/123/apply", { body: { approvalHash: job.approvalHash } })).status).toBe(202);
+    await waitFor(f.workspace, f.key, ["applied", "failed"]);
+    expect(seen).toEqual([["upload", CLICK], ["submit", CLICK]]);
+  });
+});
+
+describe("review integrity", () => {
+  test("a changed form invalidates the page's hash and an in-flight approval moves to planned", async () => {
+    const f = await fixture();
+    const job = (await (await f.call("/api/state")).json()).jobs[0];
+    const saved = await f.workspace.getForm(f.key);
+    await f.workspace.saveForm(f.key, { ...saved!, version: "v2" });
+    expect((await f.call("/api/jobs/waterlooworks/123/apply", { body: { approvalHash: job.approvalHash } })).status).toBe(409);
+    await f.workspace.saveForm(f.key, saved!);
+    // WaterlooWorks changes the form while the approved job is on its way.
+    f.gateway.form.version = "v2";
+    f.gateway.form.questions[0]!.label = "A different question?";
+    expect((await f.call("/api/jobs/waterlooworks/123/apply", { body: { approvalHash: job.approvalHash } })).status).toBe(202);
+    const status = await waitFor(f.workspace, f.key, ["planned", "applied", "failed"]);
+    expect(status.state).toBe("planned");
+    expect(status.blockers[0]).toContain("form changed");
+    expect(f.gateway.writes).toEqual({ upload: 0, submit: 0 });
+  });
+
+  test("names and serves exactly what a plan attaches, including user files", async () => {
+    const f = await fixture();
+    await pdf(join(f.workspace.paths.root, "portfolio.pdf"), "Portfolio");
+    const plan = ApplicationPlanSchema.parse({ ...await f.workspace.getPlan(f.key), attachments: [{ kind: "file", requirementId: "letter", path: "portfolio.pdf" }] });
+    await f.workspace.savePlan(f.key, plan, []);
+    const detail = await (await f.call("/api/jobs/waterlooworks/123")).json();
+    expect(detail.attachments).toEqual([{ requirementId: "letter", kind: "file", label: "Cover letter", name: "portfolio.pdf" }]);
+    const served = await f.call("/api/jobs/waterlooworks/123/attachments/letter");
+    expect(served.headers.get("content-type")).toBe("application/pdf");
+    expect((await f.call("/api/jobs/waterlooworks/123/attachments/other")).status).toBe(404);
+  });
+
+  test("does not serve a plan attachment outside the workspace", async () => {
+    const f = await fixture();
+    const outside = await mkdtemp(join(tmpdir(), "wat-outside-"));
+    cleanup.push(() => rm(outside, { recursive: true, force: true }));
+    await pdf(join(outside, "secret.pdf"), "Secret");
+    await f.workspace.savePlan(f.key, ApplicationPlanSchema.parse({ ...await f.workspace.getPlan(f.key), attachments: [{ kind: "file", requirementId: "letter", path: join(outside, "secret.pdf") }] }), ["outside"]);
+    expect((await f.call("/api/jobs/waterlooworks/123/attachments/letter")).status).toBe(404);
+  });
+
+  test("a resume whose upload already landed is reused instead of uploaded again", async () => {
+    const f = await fixture();
+    const bytes = new Uint8Array(await readFile(f.workspace.paths.resume("swe").pdf));
+    f.gateway.documents.push({ id: "landed", typeId: "1", name: `Software ${sha256(bytes).slice(0, 8)}`, revision: "r".repeat(64), state: "ready", source: "library" });
+    const job = (await (await f.call("/api/state")).json()).jobs[0];
+    expect((await f.call("/api/jobs/waterlooworks/123/apply", { body: { approvalHash: job.approvalHash } })).status).toBe(202);
+    expect((await waitFor(f.workspace, f.key, ["applied", "failed"])).state).toBe("applied");
+    expect(f.gateway.writes).toEqual({ upload: 0, submit: 1 });
+    expect((await f.workspace.getResumeUploads("swe")).uploads).toMatchObject([{ documentId: "landed" }]);
+  });
 });

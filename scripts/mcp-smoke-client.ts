@@ -77,11 +77,8 @@ export function createSmokeClient(executable: string, cwd: string, env: NodeJS.P
         "waterlooworks_get_job", "waterlooworks_get_account_overview", "waterlooworks_get_document_metadata",
         "waterlooworks_get_employer_report",
         "waterlooworks_list_documents",
-        "waterlooworks_upload_document",
-        "waterlooworks_set_default_documents",
         "waterlooworks_get_application_form",
         "waterlooworks_prepare_application",
-        "waterlooworks_submit_application",
         "waterlooworks_get_application_status",
         "waterlooworks_get_operation_status",
       ]);

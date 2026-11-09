@@ -11,6 +11,8 @@ export const DASHBOARD_SCRIPT = String.raw`
   const $ = id => document.getElementById(id);
   const selected = new Set();
   const open = new Set();
+  /** Content hash each job had when the user reviewed or selected it. */
+  const pins = new Map();
   let jobs = [];
   let timer;
   let applicationEvents;
@@ -97,6 +99,28 @@ export const DASHBOARD_SCRIPT = String.raw`
     return data;
   }
 
+  function pin(job) { if (!pins.has(job.key)) pins.set(job.key, job.reviewHash); }
+  function unpin(key) { if (!selected.has(key) && !open.has(key)) pins.delete(key); }
+  /** A job that changed after review needs a fresh review; it is never approved silently. */
+  function dropChangedPins() {
+    const changed = [];
+    for (const [key, hash] of pins) {
+      const job = jobs.find(item => item.key === key);
+      if (job?.reviewHash === hash) continue;
+      pins.delete(key);
+      const wasSelected = selected.delete(key);
+      if (job && (wasSelected || (open.has(key) && job.status.state === 'ready'))) changed.push(job.summary.title);
+    }
+    if (changed.length) { armed = false; notice(changed.join(', ') + ' changed after you reviewed it. Review it again before applying.'); }
+  }
+  const EXTENSION_ONLY = 'Applications and recovery must be approved from the WaterlooWorks extension dashboard. Open it from the extension.';
+  const canApprove = () => typeof globalThis.mintWriteApproval === 'function';
+  /** Minted by the extension for this click; the workspace service and extension both require it. */
+  async function writeApproval(action, target) {
+    if (!canApprove()) throw Error(EXTENSION_ONLY);
+    return globalThis.mintWriteApproval(action, target);
+  }
+
   const jobPath = key => '/api/jobs/' + key.split(':').map(encodeURIComponent).join('/');
   const materialPath = (key, id) => '/api/materials/jobs/' + key.split(':').map(encodeURIComponent).join('/') + '/' + encodeURIComponent(id);
   const labels = { ready: 'Ready', planned: 'Needs attention', found: 'Not planned', applying: 'Applying…', confirm_required: 'Confirm documents', applied: 'Applied', form_filled: 'Applied · checking submission', failed: 'Needs attention', outcome_unknown: 'Check submission', skipped: 'Removed' };
@@ -107,6 +131,7 @@ ${MANUAL_APPLY_SCRIPT}
 ${APPLICATION_STATUS_SCRIPT}
 
   async function renderDetails(job, box) {
+    pin(job);
     box.replaceChildren(el('p', { class: 'meta' }, 'Loading details…'));
     try {
       const detail = await api(jobPath(job.key));
@@ -116,7 +141,7 @@ ${APPLICATION_STATUS_SCRIPT}
         const file = doc.kind === 'cover_letter' ? 'cover-letter' : 'doc-' + doc.id;
         docs.append(el('button', { class: 'secondary', type: 'button', onclick: () => preview(jobPath(job.key) + '/files/' + file, doc.title || 'Cover letter') }, 'View ' + (doc.kind === 'cover_letter' ? 'cover letter' : doc.title)));
       }
-      for (const doc of job.confirmation?.documents || []) docs.append(el('button', { class: 'secondary', type: 'button', onclick: () => preview(jobPath(job.key) + '/files/processed-' + doc.id, 'Processed: ' + doc.name) }, 'View processed: ' + doc.name));
+      for (const item of detail.attachments) docs.append(el('button', { class: 'secondary', type: 'button', onclick: () => preview(jobPath(job.key) + '/attachments/' + encodeURIComponent(item.requirementId), item.label + ' · ' + item.name) }, 'View attachment: ' + item.label + ' (' + item.name + ')'));
       box.replaceChildren(
         el('section', { class: 'detail-materials', 'aria-label': 'Application documents' },
           el('h3', {}, 'Your documents'), docs.childNodes.length ? docs : el('p', { class: 'meta' }, 'No documents prepared yet. Ask your agent to prepare this application.')),
@@ -133,7 +158,7 @@ ${APPLICATION_STATUS_SCRIPT}
         detail.formBlockers?.length ? el('ul', { class: 'blockers' }, detail.formBlockers.map(b => el('li', {}, b))) : '',
         el('h3', {}, 'Your application materials and answers'),
         detail.answers.length ? el('table', {}, el('tbody', {}, detail.answers.map(a => el('tr', {}, el('th', {}, a.question), el('td', {}, a.answer))))) : el('p', { class: 'meta' }, 'No screening answers prepared.'),
-        detail.attachments.length ? el('p', { class: 'meta' }, 'Attachments: ' + detail.attachments.map(a => a.label + (a.kind === 'cover_letter' ? ' (cover letter)' : a.kind === 'document' ? ' (generated)' : '')).join(', ')) : '',
+        detail.attachments.length ? el('p', { class: 'meta' }, 'Attachments: ' + detail.attachments.map(a => a.label + ': ' + a.name + (a.kind === 'document' ? ' (generated)' : a.kind === 'file' ? ' (your file)' : '')).join(', ')) : '',
         detail.externalSteps.length ? el('ul', { class: 'caveats' }, detail.externalSteps.map(step => el('li', {}, 'After applying: ' + step))) : '',
         el('section', { class: 'posting-content' }, el('h3', {}, 'Full posting'),
           el('p', { class: 'meta' }, 'Posting ' + job.summary.jobId + ' · ' + job.summary.employer),
@@ -167,7 +192,7 @@ ${APPLICATION_STATUS_SCRIPT}
     const details = el('div', { class: 'details', hidden: !open.has(job.key) });
     if (open.has(job.key)) renderDetails(job, details);
     const toggle = el('button', { class: 'secondary', type: 'button', 'aria-expanded': String(open.has(job.key)), onclick: () => {
-      if (open.has(job.key)) { open.delete(job.key); details.hidden = true; }
+      if (open.has(job.key)) { open.delete(job.key); unpin(job.key); details.hidden = true; }
       else { open.add(job.key); details.hidden = false; renderDetails(job, details); }
       toggle.setAttribute('aria-expanded', String(open.has(job.key)));
       toggle.textContent = open.has(job.key) ? 'Hide details' : 'View in detail';
@@ -175,14 +200,13 @@ ${APPLICATION_STATUS_SCRIPT}
     const actions = el('div', { class: 'actions' }, toggle);
     if (knownCore()) actions.append(el('button', { class: 'secondary', type: 'button', disabled: true, title: 'Reserved for Insiders', 'aria-label': 'Auto-apply — requires Insider' }, 'Auto-apply'));
     if (inQueue(job) && job.manualApply && !job.active && ['ready', 'planned', 'found'].includes(state)) actions.append(manualApplyButton(job));
-      if (canSubmit() && inQueue(job) && state === 'confirm_required' && job.confirmation) actions.append(el('button', { type: 'button', disabled: Boolean(knownCore()), title: knownCore() ? 'Insider is required for server applications.' : undefined, onclick: () => act(job, 'confirm', { manifestHash: job.confirmation.manifestHash }) }, job.confirmation.fillOnly ? 'Confirm and fill form' : 'Confirm and submit'));
     if (inQueue(job) && !job.active && ['failed', 'outcome_unknown'].includes(state)) {
       actions.append(el('button', { type: 'button', onclick: () => showRecovery(job) }, 'Resolve application'));
     } else if (inQueue(job) && job.manualApply && ['planned', 'found'].includes(state)) {
       actions.append(el('button', { class: 'secondary', type: 'button', onclick: () => showRecovery(job) }, 'Check preparation'));
     }
     if (!job.active && (!inQueue(job) || ['ready', 'planned', 'found', 'failed', 'skipped'].includes(state))) actions.append(el('button', { class: 'secondary remove-action', type: 'button', onclick: () => act(job, inQueue(job) ? 'remove' : 'requeue') }, inQueue(job) ? 'Remove from queue' : 'Restore to queue'));
-    const check = selectable && job.approvalHash ? el('input', { type: 'checkbox', checked: selected.has(job.key), 'aria-label': 'Select ' + s.title, onchange: e => { armed = false; e.target.checked ? selected.add(job.key) : selected.delete(job.key); updateBar(); } }) : el('span');
+    const check = selectable && job.approvalHash ? el('input', { type: 'checkbox', checked: selected.has(job.key), 'aria-label': 'Select ' + s.title, onchange: e => { armed = false; if (e.target.checked) { selected.add(job.key); pin(job); } else { selected.delete(job.key); unpin(job.key); } updateBar(); } }) : el('span');
     return el('article', { class: 'card' },
       el('div', { class: 'row' }, check,
         el('div', {},
@@ -267,6 +291,7 @@ ${RECOVERY_UI_SCRIPT}
       const changed = next !== snapshot;
       snapshot = next;
       jobs = state.jobs;
+      dropChangedPins();
       const approvalsAfter = approvalSelection();
       if (approvalsBefore !== approvalsAfter) armed = false;
       if (submissionReady && state.submission?.authenticated !== true) armed = false;
@@ -439,7 +464,7 @@ ${RECOVERY_UI_SCRIPT}
   $('application-mode').addEventListener('change', () => { armed = false; updateBar(); });
   $('apply').addEventListener('click', applySelected);
   void refreshAccount();
-  $('select-all').addEventListener('click', () => { armed = false; for (const j of jobs) if (inQueue(j) && j.status.state === 'ready' && !j.active && j.approvalHash) selected.add(j.key); render(); });
+  $('select-all').addEventListener('click', () => { armed = false; for (const j of jobs) if (inQueue(j) && j.status.state === 'ready' && !j.active && j.approvalHash) { selected.add(j.key); pin(j); } render(); });
   void load();
 })();
 `;

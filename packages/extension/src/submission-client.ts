@@ -12,7 +12,7 @@ import type { ApplicationProgress } from "../../shared/src/application-progress.
 export const DEFAULT_SUBMISSION_ENDPOINT = "https://watworks.alishahzad.dev";
 const SETTINGS_KEY = "submission:settings", SESSION_KEY = "submission:session", DIRTY_KEY="submission:session-dirty";
 const REJECTED_KEY="submission:rejected-session";
-const settingsSchema = z.object({ endpoint: z.string(), headers: z.record(z.string()), revision: z.string().uuid() }).strict();
+const settingsSchema = z.object({ endpoint: z.string(), headers: z.record(z.string(), z.string()), revision: z.string().uuid() }).strict();
 const capabilitiesSchema = z.object({ version: z.literal(1), fillOnly: z.boolean(), binding: z.string().min(1).max(500), sessionAvailable: z.boolean().optional() });
 const sessionSchema = z.object({ accountKey: z.string().min(1).max(200), sessionId: z.string().min(1).max(500) }).strict();
 const storedSessionSchema = sessionSchema.extend({ revision: z.string().uuid(), serverBinding: z.string().min(1).max(500) }).strict();

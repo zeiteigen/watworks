@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 export async function buildExtension(outdir = join(import.meta.dir, "../../dist/packages/extension")): Promise<void> {
   const result = await Bun.build({
-    entrypoints: ["background", "popup", "inbox", "dashboard", "diagnostics", "submission-settings"].map(name => join(import.meta.dir, `src/${name}.ts`)),
+    entrypoints: ["background", "popup", "inbox", "dashboard", "diagnostics", "submission-settings", "hosted"].map(name => join(import.meta.dir, `src/${name}.ts`)),
     define: {__WAT_EXTENSION_BUILD__:JSON.stringify(new Date().toISOString())},
     outdir,
     target: "browser",
@@ -22,7 +22,7 @@ export async function buildExtension(outdir = join(import.meta.dir, "../../dist/
   });
   if (!content.success) throw new Error(`Content script build failed: ${content.logs.join("\n")}`);
 
-  for (const name of ["popup.html", "popup.css", "popup-layout.css", "inbox.html", "diagnostics.html", "submission-settings.html", "submission-settings.css", "icon16.png", "icon32.png", "icon48.png", "icon128.png"]) await Bun.write(join(outdir,name),Bun.file(join(import.meta.dir,"src",name)));
+  for (const name of ["popup.html", "popup.css", "popup-layout.css", "inbox.html", "diagnostics.html", "submission-settings.html", "submission-settings.css", "hosted.html", "hosted.css", "icon16.png", "icon32.png", "icon48.png", "icon128.png"]) await Bun.write(join(outdir,name),Bun.file(join(import.meta.dir,"src",name)));
   await Bun.write(join(outdir, "dashboard.html"), DASHBOARD_PAGE
     .replace('href="/dashboard.css"', 'href="dashboard.css"')
     .replace('<script src="/dashboard.js" defer></script>', '<script src="dashboard.js" defer></script><script src="dashboard-ui.js" defer></script>'));

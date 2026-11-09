@@ -60,6 +60,7 @@ async function pdf(path: string, text = "Original letter") {
   await writeFile(path, await document.save());
 }
 async function fixture(reviews = new ReviewService()) {
+  services.push(reviews);
   const root = await mkdtemp(join(tmpdir(), "application-workflow-test-"));
   roots.push(root);
   const documentRoot = join(root, "documents");
@@ -84,22 +85,19 @@ async function prepare(workflow: ApplicationWorkflow, input: ApplicationInput) {
   if (!result.draftId || !result.manifest || !result.manifestHash) throw new Error("Fixture did not prepare");
   return { draftId: result.draftId, manifest: result.manifest, manifestHash: result.manifestHash };
 }
-function access(review: CreatedReview) {
-  const url = new URL(review.reviewUrl);
-  const token = new URLSearchParams(url.hash.slice(1)).get("token")!;
-  return { origin: url.origin, endpoint: `${url.origin}/api/reviews/${review.operationId}`, token };
+const services: ReviewService[] = [];
+function serviceFor(review: CreatedReview): ReviewService {
+  const service = services.find(item => item.inspect(review.operationId));
+  if (!service) throw new Error("Review is missing");
+  return service;
 }
-interface Snapshot { manifest: Record<string, any>; manifestHash: string; nonce: string; status: string }
-async function snapshot(review: CreatedReview): Promise<Snapshot> {
-  const { endpoint, token } = access(review);
-  const response = await fetch(endpoint, { headers: { authorization: `Bearer ${token}` } });
-  expect(response.status).toBe(200);
-  return response.json();
+function snapshot(review: CreatedReview) {
+  const data = serviceFor(review).inspect(review.operationId)!;
+  return { ...data, manifest: data.manifest as Record<string, any> };
 }
-async function approve(review: CreatedReview, body?: { manifestHash: string; nonce: string }): Promise<Response> {
-  const { endpoint, origin, token } = access(review);
-  const data = body ?? await snapshot(review);
-  return fetch(`${endpoint}/approve`, { method: "POST", headers: { origin, authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify({ manifestHash: data.manifestHash, nonce: data.nonce }) });
+/** What the dashboard does for a verified click: 202 when it runs, 409 when it is refused. */
+async function approve(review: CreatedReview, body?: { manifestHash: string }): Promise<{ status: number }> {
+  return { status: serviceFor(review).approve(review.operationId, (body ?? snapshot(review)).manifestHash) ? 202 : 409 };
 }
 async function settled(workflow: ApplicationWorkflow, review: CreatedReview) {
   for (let count = 0; count < 200; count++) {
@@ -129,9 +127,7 @@ describe("application approval workflow", () => {
     const next = (staged as { result: unknown }).result as CreatedReview;
     const snap = await snapshot(next);
     expect(snap.manifest.documents[1].storedDocument.revision).toBe(document.revision);
-    const { endpoint, token } = access(next);
-    const download = await fetch(`${endpoint}/documents/letter`, { headers: { authorization: `Bearer ${token}` } });
-    expect(Buffer.from(await download.arrayBuffer())).toEqual(Buffer.from(bytes));
+    expect(Buffer.from(f.reviews.document(next.operationId, "letter")!)).toEqual(Buffer.from(bytes));
     modified = changed;
     expect((await approve(next)).status).toBe(202);
     expect((await settled(f.workflow, next)).status).toBe(changed ? "invalidated" : "succeeded");
@@ -289,7 +285,9 @@ describe("application approval workflow", () => {
     expect(ledger.get(review.operationId)?.state).toBe("outcome_unknown");
     ledger.close();
     await f.workflow.close();
-    const reopened = new ApplicationWorkflow({ ...f.options, reviews: new ReviewService() });
+    const reopenedReviews = new ReviewService();
+    services.push(reopenedReviews);
+    const reopened = new ApplicationWorkflow({ ...f.options, reviews: reopenedReviews });
     workflows.push(reopened);
     expect(reopened.getOperationStatus(review.operationId).status).toBe("outcome_unknown");
     f.gateway.submitError = undefined;
@@ -364,34 +362,54 @@ describe("document approvals", () => {
     expect(f.gateway.writes.upload).toBe(0);
   });
 
-  test("default review binds the document revision and performs one approved change", async () => {
+  test("a recorded upload is recovered from the library, and an absent one unlocks after a delay", async () => {
     const f = await fixture();
-    const review = await f.workflow.setDefaultDocuments("1", ["resume-1"]);
-    const data = await snapshot(review);
-    expect(data.manifest.documents[0].revision).toBe(f.gateway.documents[0]!.revision);
-    expect(data.manifestHash).toBe(fingerprint(data.manifest));
-    expect(f.gateway.writes.defaults).toBe(0);
-    expect((await approve(review, data)).status).toBe(202);
-    expect((await settled(f.workflow, review)).status).toBe("succeeded");
-    expect(f.gateway.writes.defaults).toBe(1);
-    expect((await approve(review, data)).status).toBe(409);
+    const sha = "e".repeat(64);
+    const key = fingerprint(["upload", f.gateway.accountKey, "2", "Resume abc", sha]);
+    const ledger = new AttemptLedger(f.ledgerPath);
+    const clock = Date.now;
+    try {
+      Date.now = () => clock() - 180_000;
+      ledger.reserve({ attemptId: "lost-upload", accountKey: f.gateway.accountKey, operationKey: key, manifestHash: "c".repeat(64), kind: "upload_document" });
+      ledger.transition("lost-upload", "staging"); ledger.transition("lost-upload", "submitting"); ledger.transition("lost-upload", "succeeded", "201");
+      Date.now = clock;
+      const landed: LibraryDocument = { id: "201", typeId: "2", name: "Resume abc", revision: "d".repeat(64), state: "ready", source: "library" };
+      f.gateway.documents.push(landed);
+      expect(await f.workflow.recoverUpload("2", "Resume abc", sha)).toEqual(landed);
+      expect(ledger.findOperation(key)).not.toBeNull();
+      f.gateway.documents.push({ ...landed, id: "202" });
+      await expect(f.workflow.recoverUpload("2", "Resume abc", sha)).rejects.toThrow("Several library documents");
+      f.gateway.documents.splice(1);
+      expect(await f.workflow.recoverUpload("2", "Resume abc", sha)).toBeUndefined();
+      expect(ledger.findOperation(key)).toBeNull();
+      expect(ledger.get("lost-upload")).toMatchObject({ state: "succeeded", retryAuthorizedAt: expect.any(Number) });
+      expect(f.gateway.writes.upload).toBe(0);
+    } finally { Date.now = clock; ledger.close(); }
   });
 
-  test.each(["revision", "account", "state"])("default review rejects changed %s", async change => {
+  test("a recent or in-flight upload stays locked when the document is absent", async () => {
     const f = await fixture();
-    const review = await f.workflow.setDefaultDocuments("1", ["resume-1"]);
-    if (change === "revision") f.gateway.documents[0]!.revision = "e".repeat(64);
-    if (change === "account") f.gateway.accountKey = "b".repeat(64);
-    if (change === "state") f.gateway.documents[0]!.state = "processing";
-    expect((await approve(review)).status).toBe(202);
-    expect((await settled(f.workflow, review)).status).toBe("invalidated");
-    expect(f.gateway.writes.defaults).toBe(0);
+    const sha = "e".repeat(64);
+    const ledger = new AttemptLedger(f.ledgerPath);
+    try {
+      const key = fingerprint(["upload", f.gateway.accountKey, "2", "Resume abc", sha]);
+      ledger.reserve({ attemptId: "running", accountKey: f.gateway.accountKey, operationKey: key, manifestHash: "c".repeat(64), kind: "upload_document" });
+      ledger.transition("running", "staging");
+      await expect(f.workflow.recoverUpload("2", "Resume abc", sha)).rejects.toThrow("still in progress");
+      ledger.transition("running", "submitting"); ledger.transition("running", "outcome_unknown");
+      await expect(f.workflow.recoverUpload("2", "Resume abc", sha)).rejects.toThrow("too recent");
+      expect(ledger.findOperation(key)).not.toBeNull();
+    } finally { ledger.close(); }
   });
 
-  test("default selection rejects duplicate IDs and wrong document type", async () => {
+  test("finished drafts free their capacity without waiting to expire", async () => {
     const f = await fixture();
-    await expect(f.workflow.setDefaultDocuments("1", ["resume-1", "resume-1"])).rejects.toThrow("Invalid default document selection");
-    await expect(f.workflow.setDefaultDocuments("2", ["resume-1"])).rejects.toThrow("not available");
-    expect(f.gateway.writes.defaults).toBe(0);
+    f.gateway.getApplicationStatus = async jobId => ({ jobId, hasApplication: false });
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const review = await f.workflow.submitApplication((await prepare(f.workflow, { ...f.input, jobId: "123" })).draftId);
+      expect((await approve(review)).status).toBe(202);
+      await settled(f.workflow, review);
+    }
+    expect(f.gateway.writes.submit).toBe(1);
   });
 });

@@ -1,3 +1,4 @@
+import { isBase64 } from "../../shared/src/base64.js";
 import { submissionBindingScope } from "./submission-binding.js";
 import type { WaterlooWorksClient } from "../../waterlooworks-client/src/client.js";
 import { applicationProgressSchema, type ApplicationProgress } from "../../shared/src/application-progress.js";
@@ -18,7 +19,7 @@ function decode(value: unknown): unknown {
   if (value && typeof value === "object") {
     const record = value as Record<string, unknown>;
     if (typeof record.$bytes === "string" && Object.keys(record).length === 1) {
-      if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(record.$bytes)) throw new Error("Extension bridge returned invalid byte data");
+      if (!isBase64(record.$bytes)) throw new Error("Extension bridge returned invalid byte data");
       return new Uint8Array(Buffer.from(record.$bytes, "base64"));
     }
     return Object.fromEntries(Object.entries(record).map(([key, child]) => [key, decode(child)]));
@@ -53,13 +54,13 @@ export class ExtensionCommandProxy {
   async call<T>(method: ExtensionMethod, ...args: unknown[]): Promise<T> {
     return this.perform(method,args);
   }
-  async callWithProgress<T>(method:ExtensionMethod,args:unknown[],onProgress:(progress:ApplicationProgress)=>void):Promise<T>{
-    return this.perform(method,args,onProgress);
+  async callWithProgress<T>(method:ExtensionMethod,args:unknown[],onProgress:(progress:ApplicationProgress)=>void,approval?:string):Promise<T>{
+    return this.perform(method,args,onProgress,approval);
   }
-  private async perform<T>(method:ExtensionMethod,args:unknown[],onProgress?:(progress:ApplicationProgress)=>void):Promise<T>{
+  private async perform<T>(method:ExtensionMethod,args:unknown[],onProgress?:(progress:ApplicationProgress)=>void,approval?:string):Promise<T>{
     let response: Response;
     const timeout = method === "getOperationProgress" ? 1500 : ["submissionCommand", "uploadDocument", "stageAttachments", "submitApplication", "fillApplication", "setDefaultDocuments", "discoveryPolicySave"].includes(method) ? 185_000 : 35_000;
-    try { response = await fetch(`${this.baseUrl}/command`, { method: "POST", headers: { "content-type": "application/json",...(onProgress?{accept:COMMAND_STREAM_TYPE}:{}) }, body: encode({ method, args }), signal: AbortSignal.timeout(timeout) }); }
+    try { response = await fetch(`${this.baseUrl}/command`, { method: "POST", headers: { "content-type": "application/json",...(onProgress?{accept:COMMAND_STREAM_TYPE}:{}) }, body: encode({ method, args, ...(approval?{approval}:{}) }), signal: AbortSignal.timeout(timeout) }); }
     catch { throw new Error("WaterlooWorks extension bridge is unavailable"); }
     let body: unknown;
     try { body = response.headers.get("content-type")?.startsWith(COMMAND_STREAM_TYPE) ? await readCommandStream(response,onProgress) : JSON.parse(await readBoundedText(response)); } catch (error) {
@@ -97,9 +98,9 @@ export class ExtensionResearchClient implements ResearchClient {
 }
 
 class SubmissionCommandProxy extends ExtensionCommandProxy {
-  override async callWithProgress<T>(method:ExtensionMethod,args:unknown[],onProgress:(progress:ApplicationProgress)=>void):Promise<T>{
+  override async callWithProgress<T>(method:ExtensionMethod,args:unknown[],onProgress:(progress:ApplicationProgress)=>void,approval?:string):Promise<T>{
     const binding=submissionBindingScope.getStore();
-    return binding?super.callWithProgress<T>("submissionCommand",[binding,method,args],onProgress):super.callWithProgress<T>(method,args,onProgress);
+    return binding?super.callWithProgress<T>("submissionCommand",[binding,method,args],onProgress,approval):super.callWithProgress<T>(method,args,onProgress,approval);
   }
   override async call<T>(method: ExtensionMethod, ...args: unknown[]): Promise<T> {
     const binding = submissionBindingScope.getStore();
@@ -116,11 +117,11 @@ export class ExtensionApplicationGateway implements ApplicationGateway {
     listeners.add(listener);
     return ()=>{listeners.delete(listener);if(!listeners.size)this.progressListeners.delete(operationId);};
   }
-  private command<T>(method:ExtensionMethod,args:unknown[],attemptId?:string):Promise<T>{
+  private command<T>(method:ExtensionMethod,args:unknown[],attemptId?:string,approval?:string):Promise<T>{
     if(!attemptId || typeof this.proxy.callWithProgress!=="function")return this.proxy.call<T>(method,...args);
     return this.proxy.callWithProgress<T>(method,args,progress=>{
       for(const listener of this.progressListeners.get(attemptId)??[])try{listener(progress);}catch{/* Telemetry cannot fail an approved write. */}
-    });
+    },approval);
   }
   async getOperationProgress(operationId: string) { return applicationProgressSchema.nullable().parse(await this.proxy.call("getOperationProgress", operationId)); }
   listApplications(): Promise<import("../../application-workflow/src/types.js").ApplicationInventory> { return this.proxy.call("listApplications"); }
@@ -139,17 +140,17 @@ export class ExtensionApplicationGateway implements ApplicationGateway {
   listDocuments(): ReturnType<ApplicationGateway["listDocuments"]> { return this.proxy.call("listDocuments"); }
   getDocument(documentId: string): NonNullable<ApplicationGateway["getDocument"]> extends (...args: never[]) => infer R ? R : never { return this.proxy.call("getDocument", documentId); }
   getDocumentSnapshot(documentId: string): NonNullable<ApplicationGateway["getDocumentSnapshot"]> extends (...args: never[]) => infer R ? R : never { return this.proxy.call("getDocumentSnapshot", documentId); }
-  stageAttachments(manifest: Parameters<NonNullable<ApplicationGateway["stageAttachments"]>>[0], files: Parameters<NonNullable<ApplicationGateway["stageAttachments"]>>[1], attemptId?: string): ReturnType<NonNullable<ApplicationGateway["stageAttachments"]>> { return this.command("stageAttachments",[attemptId ? {...manifest, executionAttemptId:attemptId} : manifest, [...files]],attemptId); }
+  stageAttachments(manifest: Parameters<NonNullable<ApplicationGateway["stageAttachments"]>>[0], files: Parameters<NonNullable<ApplicationGateway["stageAttachments"]>>[1], attemptId?: string, approval?: string): ReturnType<NonNullable<ApplicationGateway["stageAttachments"]>> { return this.command("stageAttachments",[attemptId ? {...manifest, executionAttemptId:attemptId} : manifest, [...files]],attemptId,approval); }
   getAccount(): ReturnType<ApplicationGateway["getAccount"]> { return this.proxy.call("getAccount"); }
-  uploadDocument(typeId: string, name: string, file: Parameters<ApplicationGateway["uploadDocument"]>[2], accountKey: string, attemptId?: string): ReturnType<ApplicationGateway["uploadDocument"]> { return this.command("uploadDocument",[typeId,name,file,accountKey,...(attemptId?[attemptId]:[])],attemptId); }
+  uploadDocument(typeId: string, name: string, file: Parameters<ApplicationGateway["uploadDocument"]>[2], accountKey: string, attemptId?: string, approval?: string): ReturnType<ApplicationGateway["uploadDocument"]> { return this.command("uploadDocument",[typeId,name,file,accountKey,...(attemptId?[attemptId]:[])],attemptId,approval); }
   setDefaultDocuments(typeId: string, documentIds: string[], accountKey: string): ReturnType<ApplicationGateway["setDefaultDocuments"]> { return this.proxy.call("setDefaultDocuments", typeId, documentIds, accountKey); }
   async submitApplication(...args: Parameters<ApplicationGateway["submitApplication"]>): ReturnType<ApplicationGateway["submitApplication"]> {
-    const [manifest, files, beforeFinalSubmit, staged, attemptId] = args;
+    const [manifest, files, beforeFinalSubmit, staged, attemptId, approval] = args;
     beforeFinalSubmit();
     // Keep the established argument shape for existing broker owners. This
     // transport-only identity is removed before the approved manifest is used.
-    if (manifest.executionMode === "fill_only") return this.command("fillApplication",[attemptId ? { ...manifest, executionAttemptId: attemptId } : manifest, [...files], staged ?? []],attemptId);
-    if (attemptId) return this.command("submitApplication", [{ ...manifest, executionAttemptId: attemptId }, [...files], staged ?? []],attemptId);
+    if (manifest.executionMode === "fill_only") return this.command("fillApplication",[attemptId ? { ...manifest, executionAttemptId: attemptId } : manifest, [...files], staged ?? []],attemptId,approval);
+    if (attemptId) return this.command("submitApplication", [{ ...manifest, executionAttemptId: attemptId }, [...files], staged ?? []],attemptId,approval);
     return staged === undefined ? this.proxy.call("submitApplication", manifest, [...files]) : this.proxy.call("submitApplication", manifest, [...files], staged);
   }
   getApplicationStatus(jobId: string): ReturnType<ApplicationGateway["getApplicationStatus"]> { return this.proxy.call("getApplicationStatus", jobId); }

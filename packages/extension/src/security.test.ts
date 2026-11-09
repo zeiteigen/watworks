@@ -53,3 +53,10 @@ describe("WaterlooWorks extension security contract", () => {
     expect(source).not.toMatch(/chrome\.cookies\.getAll|cookie\.value|WATERLOOWORKS_JOBS_URL/i);
   });
 });
+
+test("write approvals are minted only behind the extension-page sender check",()=>{
+  const guard=source.indexOf('sender.id !== chrome.runtime.id || !sender.url?.startsWith(chrome.runtime.getURL(""))');
+  const mint=source.indexOf('input.type === "mintWriteApproval"');
+  expect(guard).toBeGreaterThan(-1);
+  expect(mint).toBeGreaterThan(guard);
+});

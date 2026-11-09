@@ -81,16 +81,15 @@ where it is performed. Never infer statuses the profile does not state.
 
 Application workflow:
 1. Read waterlooworks_get_application_form and waterlooworks_list_documents.
-2. Use an explicit uploaded resume ID, exact question IDs/options, and local
-   PDF paths for cover letters and custom attachments. Never invent personal answers.
-3. waterlooworks_prepare_application validates a local draft without writes.
-4. waterlooworks_submit_application returns a localhost review URL. The human
-   must inspect documents/answers and approve. Local attachments require upload
-   approval followed by review_required and a second reviewUrl for exact
-   server-processed PDFs before final submission. Agents must
-   never click approval controls or call review approval endpoints.
-5. Poll waterlooworks_get_operation_status. Never retry uncertain submissions.
-Uploads use the same human review mechanism. Global default changes are unsupported.
+2. Use exact question IDs/options and generated or data/ PDFs for attachments.
+   Never invent personal answers.
+3. waterlooworks_prepare_application optionally validates a draft without writes.
+4. Save the result with application_plan_save. Agents have no write tools: only the
+   user applies, from the extension dashboard, and the extension refuses writes
+   without an approval minted by that click. Never try to reach the dashboard API,
+   the bridge, or the browser to approve or submit.
+5. Read outcomes with jobs_list and waterlooworks_get_operation_status. Never retry
+   uncertain submissions. Global default-document changes are unsupported.
 Only Full-Cycle internal applications are supported. Report employer website
 steps as outstanding; an internal receipt does not complete external steps.
 
@@ -133,12 +132,13 @@ Tool selection:
   document defaults.
 
 Authentication recovery:
-If status reports authenticated=false, the connected extension automatically
-opens the WaterlooWorks sign-in flow in its browser profile, reusing an existing
-WaterlooWorks tab where possible. Authentication failures during requests also
-open sign-in. Ask the user to complete login in that tab, then recheck status
-and retry read requests. Failed writes are never replayed automatically. If no
-tab opens, use the extension's Sign in control. The extension owns all
+Status checks and background reconciliation never open sign-in tabs. If status
+reports authenticated=false, ask the user to sign in to WaterlooWorks in the
+extension's browser profile when they are ready to use it. Authentication failures
+during explicitly requested research or preparation reads open sign-in, reusing
+an existing WaterlooWorks tab where possible. Ask the user to complete login in
+that tab, then recheck status and retry read requests. Failed writes are never
+replayed automatically. The extension owns all
 WaterlooWorks requests and keeps credentials in the browser. If status
 remains false after sign-in, have the user reload the extension
 and reconnect the MCP server. Never expose or request credential material.
@@ -207,7 +207,7 @@ export function createWaterlooWorksMcpServer(dependencies: McpServerDependencies
         "Search current WaterlooWorks co-op job postings by keyword and filters. Results are returned as one unpaged set; use this to shortlist posting IDs before calling waterlooworks_get_job.",
       inputSchema: {
         keyword: z.string().optional().describe("Keyword or phrase to search for"),
-        filters: z.record(z.unknown()).nullable().optional().describe("WaterlooWorks DataViewer filters"),
+        filters: z.record(z.string(), z.unknown()).nullable().optional().describe("WaterlooWorks DataViewer filters"),
         sort: z
           .array(z.object({ key: z.string(), direction: z.string() }))
           .optional()

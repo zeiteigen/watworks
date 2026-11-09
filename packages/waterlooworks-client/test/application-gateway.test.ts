@@ -26,6 +26,7 @@ function server(settings: Settings = {}) {
   let stage = "review";
   let savedAttachment = false;
   let storedPdf: Uint8Array = attachmentPdf;
+  let transcriptPdf: Uint8Array = applicationPdf;
   const fetchImpl: FetchLike = async (input, init) => {
     const url = new URL(String(input));
     const path = url.pathname;
@@ -50,7 +51,7 @@ function server(settings: Settings = {}) {
     }
     if (action === "fake-preview") {
       const docId = body?.get("docId");
-      const bytes = docId === "200" ? (settings.digestMismatch ? applicationPdf : storedPdf) : applicationPdf;
+      const bytes = docId === "200" ? (settings.digestMismatch ? applicationPdf : storedPdf) : docId === "300" ? transcriptPdf : applicationPdf;
       return json({ doc: Buffer.from(bytes).toString("base64") });
     }
     if (action === "fake-data-action-for-tests") return json({
@@ -74,7 +75,7 @@ function server(settings: Settings = {}) {
     throw new Error(`Unexpected fake request: ${path} ${action}`);
   };
   const gateway = new WaterlooWorksApplicationGateway({ getSession: async () => applicationSession }, fetchImpl);
-  return { gateway, calls, events, setStoredPdf(bytes: Uint8Array) { storedPdf = bytes; }, beginSubmit() { calls.length = 0; events.length = 0; stage = "submit"; } };
+  return { gateway, calls, events, setStoredPdf(bytes: Uint8Array) { storedPdf = bytes; }, setTranscriptPdf(bytes: Uint8Array) { transcriptPdf = bytes; }, beginSubmit() { calls.length = 0; events.length = 0; stage = "submit"; } };
 }
 
 async function approval(fake: ReturnType<typeof server>, settings: Settings = {}): Promise<{ manifest: ApplicationManifest; files: Map<string, PreparedFile> }> {
@@ -100,6 +101,17 @@ describe("WaterlooWorksApplicationGateway request contracts", () => {
       expect(form.externalSteps).toEqual(["Complete the optional employer survey."]);
       expect(fake.calls.every(call => call.path.endsWith("documents.htm") || call.path.endsWith("jobs.htm"))).toBe(true);
     }
+  });
+
+  test("a regenerated system record keeps the form version and its pinned identity", async () => {
+    const fake = server();
+    const before = await fake.gateway.getApplicationForm("12345");
+    fake.setTranscriptPdf(attachmentPdf);
+    const after = await fake.gateway.getApplicationForm("12345");
+    const record = (form: typeof before) => form.requirements.find(slot => slot.role === "system")?.selectedDocument;
+    expect(record(after)).toEqual(record(before)!);
+    expect(after.version).toBe(before.version);
+    expect(after.blockers).toEqual([]);
   });
 
   test.each(["GET", "fake-docOwnerStats", "fake-grid", "fake-preview", "fake-data-action-for-tests", "fake-open-wizard"])("logout during %s preflight is proven safe before writes", async logoutAction => {

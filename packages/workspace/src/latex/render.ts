@@ -17,9 +17,19 @@ export function inline(value: string): string {
   return value.split(/\*\*(.+?)\*\*/g).map((part, index) => index % 2 ? `\\textbf{${escapeLatex(part)}}` : escapeLatex(part)).join("");
 }
 
+const LINK_SCHEMES = new Set(["http", "https", "mailto", "tel"]);
+
+/**
+ * Links reach \href nearly verbatim, so anything TeX could reinterpret is percent-encoded.
+ * That includes ^, because TeX reads ^^7d as a closing brace and ^^5c as a backslash.
+ */
 function url(value: string): string {
-  // \href arguments still need %, #, and braces escaped.
-  return value.replace(/[\\{}%#]/g, char => `\\${char === "\\" ? "textbackslash{}" : char}`);
+  const link = value.trim();
+  const scheme = /^([A-Za-z][A-Za-z0-9+.-]*):/.exec(link)?.[1]?.toLowerCase();
+  if (scheme && !LINK_SCHEMES.has(scheme)) throw new Error(`Unsupported link scheme "${scheme}": use http, https, mailto, or tel`);
+  return link
+    .replace(/[^\x21-\x7e]|[\\{}^`<>"|]/gu, encodeURIComponent)
+    .replace(/[%#]/g, char => `\\${char}`);
 }
 
 function itemList(bullets: readonly string[]): string[] {

@@ -5,6 +5,7 @@ import { validateApplication } from "../../application-workflow/src/validate.js"
 import { ApplicationHttp, APPLICATION_PATH } from "./application-http.js";
 import { ApplicationDocuments, type DocumentContext } from "./application-documents.js";
 import { parseApplicationPage, type ParsedApplicationPage } from "./application-page.js";
+import { pinSystemDocument } from "./system-document.js";
 import { discoverPageAction, parseBootstrapPage, requirePostingAction } from "./bootstrap.js";
 import { fieldsRecord, jsonObject, text } from "./application-fields.js";
 import { applicationDeadline } from "./application-deadline.js";
@@ -182,7 +183,7 @@ export class WaterlooWorksApplicationGateway implements ApplicationGateway {
     if (page.uploadSaveFields.postingId !== jobId || page.uploadSaveFields.uiForm !== "true") blockers.push("Attachment upload identity changed");
     for (const requirement of page.requirements) {
       if (requirement.role !== "system" || !requirement.selectedDocument) continue;
-      try { requirement.selectedDocument = await this.documents.read(context, { ...requirement.selectedDocument, state: "ready" }); }
+      try { requirement.selectedDocument = pinSystemDocument(await this.documents.read(context, { ...requirement.selectedDocument, state: "ready" })); }
       catch { blockers.push(`System document cannot be read: ${requirement.label}`); }
     }
     const externalSteps = posting.application?.additionalInformation ? [posting.application.additionalInformation] : [];

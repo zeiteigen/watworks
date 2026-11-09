@@ -1,16 +1,18 @@
 import { createSubmissionSettingsPanel } from "./submission-settings-panel.js";
-import { createDashboardRequest, WORKSPACE_SERVICE } from "./dashboard-api.js";
+import { createDashboardRequest, createWriteApprovalMinter, WORKSPACE_SERVICE } from "./dashboard-api.js";
 import { getInsiderAccount } from "./insider-account.js";
 import { developerModeEnabled, installDeveloperMode } from "./developer-mode.js";
 
 installDeveloperMode(document);
 
 const request=createDashboardRequest(message => chrome.runtime.sendMessage(message));
+const mintWriteApproval=createWriteApprovalMinter(message => chrome.runtime.sendMessage(message));
 Object.assign(globalThis, {
   dashboardEventsUrl:WORKSPACE_SERVICE+"/api/application-events",
   createSubmissionSettingsPanel,
   submissionDeveloperModeEnabled: () => developerModeEnabled(document),
   dashboardRequest: request,
+  mintWriteApproval,
   getInsiderAccount,
   hasInsiderAccount: async () => (await getInsiderAccount())?.insider === true,
 });

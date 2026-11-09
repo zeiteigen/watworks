@@ -5,6 +5,7 @@ export const APPLICATION_APPROVAL_SCRIPT = String.raw`
   }
   async function applySelected() {
     if (preparing || dispatching || !selected.size) return;
+    if (!canApprove()) { notice(EXTENSION_ONLY); return; }
     if (knownCore()) { $('status').textContent = 'Insider is required for server applications. Manual applications remain available.'; return; }
     if (submissionBlocked) { $('status').textContent = 'Resolve the submission block above before applying.'; return; }
     if (!armed) {
@@ -26,8 +27,9 @@ export const APPLICATION_APPROVAL_SCRIPT = String.raw`
     armed = false;
     dispatching = true;
     const executionMode = $('application-mode').value || undefined;
-    const chosen = jobs.filter(j => inQueue(j) && j.status.state === 'ready' && !j.active && selected.has(j.key));
+    const chosen = jobs.filter(j => inQueue(j) && j.status.state === 'ready' && !j.active && selected.has(j.key) && pins.get(j.key) === j.reviewHash);
     selected.clear();
+    for (const job of chosen) unpin(job.key);
     for (const job of chosen) pendingApplications.set(job.key, 'Waiting to start…');
     queueTab = 'progress';
     queueView = 'queue';
@@ -38,7 +40,7 @@ export const APPLICATION_APPROVAL_SCRIPT = String.raw`
       for (const job of chosen) {
         pendingApplications.set(job.key, 'Starting application…');
         render();
-        try { await api(jobPath(job.key) + '/apply', { approvalHash: job.approvalHash, executionMode }); }
+        try { await api(jobPath(job.key) + '/apply', { approvalHash: job.approvalHash, executionMode, approval: await writeApproval('apply', job.key) }); }
         catch (error) { notice(job.summary.title + ': ' + error.message); }
       }
       await load();

@@ -5,7 +5,6 @@ export type ReviewState =
   | "awaiting_approval"
   | "executing"
   | "review_required"
-  | "rejected"
   | "expired"
   | "invalidated"
   | "failed"
@@ -24,7 +23,7 @@ export interface CreateReviewInput {
   /** SHA-256 hex digest of JSON.stringify(manifest). */
   manifestHash: string;
   actionLabel: string;
-  /** Captured local PDFs offered only within this authenticated review. */
+  /** Captured PDFs retained for the life of this review. */
   documents?: ReviewDocument[];
   revalidate: () => Promise<void>;
   /** Return only safe public domain data, never credentials or raw transport responses. */
@@ -40,7 +39,6 @@ export interface ReviewDocument {
 export interface CreatedReview {
   operationId: string;
   status: "awaiting_approval";
-  reviewUrl: string;
 }
 
 /** Throw only when the executor knows that no remote mutation was attempted. */
@@ -56,8 +54,6 @@ export interface ReviewRecord {
   manifest: JsonValue;
   manifestHash: string;
   actionLabel: string;
-  token: string;
-  nonce: string | null;
   expiresAt: number;
   status: ReviewState;
   result?: JsonValue;

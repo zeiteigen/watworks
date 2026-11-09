@@ -99,13 +99,13 @@ test('a failed re-verification reports its HTTP status without retrying again',a
   expect((await getInsiderAccount()).insider).toBe(true);
   accountStatus=401;authStatus=503;
   const account=await afterCacheExpires(()=>getInsiderAccount());
-  expect(account).toMatchObject({email,insider:false,reason:'Insider verification unavailable (HTTP 503). Core features remain available.'});
+  expect(account).toMatchObject({email,insider:false,reason:'Insider verification unavailable (HTTP 503). Try again shortly.'});
   expect(remoteCalls).toHaveLength(3);
   expect(session[INSIDER_SESSION_KEY]).toBeUndefined();
 });
 test('rate limiting is reported separately from a confirmed Core plan',async()=>{
   authStatus=429;
-  expect(await getInsiderAccount()).toMatchObject({email,insider:false,reason:'Insider verification is temporarily rate-limited (HTTP 429). Core features remain available.'});
+  expect(await getInsiderAccount()).toMatchObject({email,insider:false,reason:'Insider verification is temporarily rate-limited (HTTP 429). Try again shortly.'});
   expect(remoteCalls).toHaveLength(1);
 });
 

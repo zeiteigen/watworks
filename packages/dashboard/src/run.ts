@@ -21,8 +21,7 @@ export async function runDashboard(): Promise<void> {
   await workspace.scaffold();
   const bridge = new BridgeLifecycle();
   await bridge.start();
-  // The dashboard is the approval surface, so its review service never serves HTTP.
-  const reviews = new ReviewService({ serve: false });
+  const reviews = new ReviewService();
   const workflow = createApplicationWorkflow({ reviews });
   const localWorkflow = createApplicationWorkflow({reviews,gateway:new LocalApplicationGateway()});
   const client = new ExtensionResearchClient();

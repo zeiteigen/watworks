@@ -79,7 +79,7 @@ export function registerWorkspaceTools(server: McpServer, workspace: Workspace, 
   }));
 
   tool("profile_save", "Validate and save the complete profile to data/profile/profile.json. Only record facts the user stated. Each target names the resume variant to use for it.", {
-    profile: z.record(z.unknown()).describe(`Profile object. Shape: ${JSON.stringify(describe(ProfileSchema))}`),
+    profile: z.record(z.string(), z.unknown()).describe(`Profile object. Shape: ${JSON.stringify(describe(ProfileSchema))}`),
   }, false, async ({ profile }) => ({ saved: workspace.paths.profile, profile: await workspace.saveProfile(profile) }));
 
   tool("experience_save", "Save the user's master experience/resume content draft (verbatim Markdown) to data/profile/experience.md. Pass markdown text, or importPath to copy an existing .md/.txt/.tex file the user pointed to.", {
@@ -96,7 +96,7 @@ export function registerWorkspaceTools(server: McpServer, workspace: Workspace, 
     variant: slug.describe("Variant id, for example ml-research"),
     label: z.string().min(1).max(200),
     targets: z.array(slug).default([]).describe("Profile target ids this variant serves"),
-    resume: z.record(z.unknown()).describe(`ResumeDocument. Shape: ${JSON.stringify(describe(ResumeDocumentSchema))}. Bullets may use **bold**.`),
+    resume: z.record(z.string(), z.unknown()).describe(`ResumeDocument. Shape: ${JSON.stringify(describe(ResumeDocumentSchema))}. Bullets may use **bold**.`),
   }, false, async args => ({ variant: args.variant, ...await created(workspace.paths.resume(args.variant).pdf, () => buildResumeVariant(workspace, args)) }));
 
   tool("resume_list", "List resume variants, their targets, and compiled PDF paths.", {}, true, async () => ({
@@ -104,7 +104,7 @@ export function registerWorkspaceTools(server: McpServer, workspace: Workspace, 
   }));
 
   tool("jobs_search", "Search a job source and record the query and results in data/searches/. Results are summaries only; call job_save for shortlisted jobs.", {
-    source: z.string().default("waterlooworks"), keyword: z.string().optional(), filters: z.record(z.unknown()).nullable().optional(),
+    source: z.string().default("waterlooworks"), keyword: z.string().optional(), filters: z.record(z.string(), z.unknown()).nullable().optional(),
   }, false, async ({ source: id, keyword, filters }: { source: string; keyword?: string; filters?: Record<string, unknown> | null }) => {
     const query = { ...(keyword !== undefined ? { keyword } : {}), ...(filters !== undefined ? { filters } : {}) };
     const result = await source(id).search(query);
@@ -133,7 +133,7 @@ export function registerWorkspaceTools(server: McpServer, workspace: Workspace, 
     async ({ jobKey: raw, reason }: { jobKey: string; reason: string }) => ({ status: await workspace.skipJob(parseJobKey(raw), reason) }));
 
   tool("cover_letter_save", "Write a tailored cover letter for a saved job, render it through data/templates/cover-letter.tex, and compile it to PDF. Use only facts from the profile and experience draft. A newly created PDF opens automatically for the user (opened: true).", {
-    jobKey, letter: z.record(z.unknown()).describe(`CoverLetter. Shape: ${JSON.stringify(describe(CoverLetterSchema))}`),
+    jobKey, letter: z.record(z.string(), z.unknown()).describe(`CoverLetter. Shape: ${JSON.stringify(describe(CoverLetterSchema))}`),
   }, false, async ({ jobKey: raw, letter }: { jobKey: string; letter: unknown }) => {
     const key = parseJobKey(raw);
     return created(workspace.paths.job(key).coverLetterPdf, () => buildCoverLetter(workspace, key, letter));
@@ -142,7 +142,7 @@ export function registerWorkspaceTools(server: McpServer, workspace: Workspace, 
   tool("job_document_save", "Write any other job-specific document for a saved job (project summary, writing sample, portfolio notes, statement of interest, ...), render it through data/templates/document.tex, and compile it to PDF. Use only facts from the profile and experience draft. Attach it in a plan with {kind: 'document', requirementId, document}. A newly created PDF opens automatically for the user (opened: true).", {
     jobKey,
     document: slug.describe("Document id within the job, for example project-summary"),
-    content: z.record(z.unknown()).describe(`JobDocument. Shape: ${JSON.stringify(describe(JobDocumentSchema))}. Paragraphs and bullets may use **bold**.`),
+    content: z.record(z.string(), z.unknown()).describe(`JobDocument. Shape: ${JSON.stringify(describe(JobDocumentSchema))}. Paragraphs and bullets may use **bold**.`),
   }, false, async ({ jobKey: raw, document, content }: { jobKey: string; document: string; content: unknown }) => {
     const key = parseJobKey(raw);
     return { document, ...await created(workspace.paths.jobDocument(key, document).pdf, () => buildJobDocument(workspace, key, document, content)) };
@@ -161,7 +161,7 @@ export function registerWorkspaceTools(server: McpServer, workspace: Workspace, 
   });
 
   tool("application_plan_save", "Save the application plan for a saved job: resume variant, attachment slots (cover_letter, a generated document, or a PDF inside data/), answers to the form's questions using exact question IDs and option IDs, fit summary, and rank. Validated against the saved application form; the job becomes 'ready' for the dashboard only when there are no blockers. This never submits anything.", {
-    jobKey, plan: z.record(z.unknown()).describe(`ApplicationPlan. Shape: ${JSON.stringify(describe(ApplicationPlanSchema))}`),
+    jobKey, plan: z.record(z.string(), z.unknown()).describe(`ApplicationPlan. Shape: ${JSON.stringify(describe(ApplicationPlanSchema))}`),
   }, false, async ({ jobKey: raw, plan: input }: { jobKey: string; plan: unknown }) => {
     const key = parseJobKey(raw);
     const plan = ApplicationPlanSchema.parse(input);
@@ -183,22 +183,20 @@ export function registerWorkspaceTools(server: McpServer, workspace: Workspace, 
 }
 
 /** Compact JSON-ish description of a zod schema for tool docs, so agents see the exact shape. */
-function describe(schema: z.ZodTypeAny): unknown {
-  const def = schema._def;
-  switch (def.typeName) {
-    case "ZodObject": return Object.fromEntries(Object.entries((schema as z.AnyZodObject).shape).map(([key, value]) => [(value as z.ZodTypeAny).isOptional() ? `${key}?` : key, describe(value as z.ZodTypeAny)]));
-    case "ZodArray": return [describe(def.type)];
-    case "ZodOptional": case "ZodNullable": return describe(def.innerType);
-    case "ZodDefault": return describe(def.innerType);
-    case "ZodEffects": return describe(def.schema);
-    case "ZodEnum": return def.values.join(" | ");
-    case "ZodLiteral": return JSON.stringify(def.value);
-    case "ZodUnion": return def.options.map(describe);
-    case "ZodDiscriminatedUnion": return def.options.map(describe);
-    case "ZodRecord": return { "<key>": describe(def.valueType) };
-    case "ZodString": return "string";
-    case "ZodNumber": return "number";
-    case "ZodBoolean": return "boolean";
+function describe(schema: z.ZodType): unknown {
+  const def = schema.def as unknown as { type: string; shape: Record<string, z.ZodType>; element: z.ZodType; innerType: z.ZodType; in: z.ZodType; entries: Record<string, string>; values: unknown[]; options: z.ZodType[]; valueType: z.ZodType };
+  switch (def.type) {
+    case "object": return Object.fromEntries(Object.entries(def.shape).map(([key, value]) => [value.isOptional() ? `${key}?` : key, describe(value)]));
+    case "array": return [describe(def.element)];
+    case "optional": case "nullable": case "default": case "prefault": return describe(def.innerType);
+    case "pipe": return describe(def.in);
+    case "enum": return Object.values(def.entries).join(" | ");
+    case "literal": return JSON.stringify(def.values[0]);
+    case "union": return def.options.map(describe);
+    case "record": return { "<key>": describe(def.valueType) };
+    case "string": return "string";
+    case "number": return "number";
+    case "boolean": return "boolean";
     default: return "any";
   }
 }

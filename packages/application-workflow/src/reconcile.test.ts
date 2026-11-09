@@ -21,7 +21,7 @@ test("reconciliation releases account quarantine after verified absence but pres
   } finally { Date.now = clock; }
   let hasApplication = false;
   const gateway = { getAccount: async () => ({ accountKey }), getApplicationStatus: async (jobId: string) => ({ jobId, hasApplication }) } as ApplicationGateway;
-  const workflow = new ApplicationWorkflow({ gateway, ledgerPath, documentRoots: [], reviews: new ReviewService({ serve: false }) });
+  const workflow = new ApplicationWorkflow({ gateway, ledgerPath, documentRoots: [], reviews: new ReviewService() });
   const inventory: ApplicationInventory = { accountKey, checkedAt: new Date().toISOString(), termId: "437", applications: [] };
   try {
     hasApplication = true;

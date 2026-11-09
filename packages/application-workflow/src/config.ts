@@ -6,6 +6,14 @@ import { ExtensionApplicationGateway } from "../../bridge/src/extension-proxy.js
 import { ApplicationWorkflow } from "./workflow.js";
 import { dataRoot } from "../../workspace/src/paths.js";
 
+/** Durable attempt ledger location. Native-host startup pins it so every launcher shares one ledger. */
+export function attemptLedgerPath(): string {
+  const base = process.platform === "win32" ? process.env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local")
+    : process.platform === "darwin" ? join(homedir(), "Library", "Application Support")
+      : process.env.XDG_STATE_HOME ?? join(homedir(), ".local", "state");
+  return process.env.WATERLOOWORKS_LEDGER_PATH ?? join(base, "waterlooworks-mcp", "applications", "attempts.sqlite");
+}
+
 export function createApplicationWorkflow(options: { reviews?: ReviewService; gateway?:ApplicationGateway } = {}): ApplicationWorkflow {
   const configured = process.env.WATERLOOWORKS_DOCUMENT_ROOTS;
   let documentRoots: string[] = [];
@@ -15,12 +23,8 @@ export function createApplicationWorkflow(options: { reviews?: ReviewService; ga
     documentRoots = parsed as string[];
   }
   documentRoots = [...new Set([dataRoot(), ...documentRoots])];
-  const base = process.platform === "win32" ? process.env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local")
-    : process.platform === "darwin" ? join(homedir(), "Library", "Application Support")
-      : process.env.XDG_STATE_HOME ?? join(homedir(), ".local", "state");
-  const ledgerPath = process.env.WATERLOOWORKS_LEDGER_PATH ?? join(base, "waterlooworks-mcp", "applications", "attempts.sqlite");
   return new ApplicationWorkflow({
-    gateway: options.gateway ?? new ExtensionApplicationGateway(), documentRoots, ledgerPath,
+    gateway: options.gateway ?? new ExtensionApplicationGateway(), documentRoots, ledgerPath: attemptLedgerPath(),
     ...(options.reviews ? { reviews: options.reviews } : {}),
   });
 }

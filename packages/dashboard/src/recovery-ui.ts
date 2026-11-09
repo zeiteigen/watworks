@@ -10,7 +10,7 @@ export const RECOVERY_UI_SCRIPT = String.raw`
       check.disabled = true;
       feedback.textContent = 'Checking WaterlooWorks. Nothing will be submitted…';
       try {
-        const result = await api(jobPath(job.key) + '/recover', { acknowledged: true, updatedAt: job.status.updatedAt });
+        const result = await api(jobPath(job.key) + '/recover', { acknowledged: true, updatedAt: job.status.updatedAt, approval: await writeApproval('recover', job.key) });
         await load();
         const status = result.status;
         feedback.textContent = status.state === 'applied' ? 'Application verified. This job is now in Applied.' + (submissionBlocked ? ' Another operation still pauses submissions. Use Unblock other jobs if you need to continue while it is unresolved.' : '')
@@ -77,7 +77,7 @@ export const RECOVERY_UI_SCRIPT = String.raw`
       if (release.disabled) return;
       release.disabled = true;
       try {
-        await api('/api/submission-blocks/' + encodeURIComponent(block.id) + '/release', { updatedAt: block.updatedAt, acknowledged: true, reason: reason.value.trim() });
+        await api('/api/submission-blocks/' + encodeURIComponent(block.id) + '/release', { updatedAt: block.updatedAt, acknowledged: true, reason: reason.value.trim(), approval: await writeApproval('release', block.id) });
         await load();
         view.close();
         notice('Other jobs are unblocked. Nothing was submitted or retried.');

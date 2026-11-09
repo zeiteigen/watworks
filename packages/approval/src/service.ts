@@ -1,6 +1,4 @@
-import { randomBytes } from "node:crypto";
 import { captureDocuments, clearDocuments } from "./documents.js";
-import { createReviewFetch, reviewResponse } from "./http.js";
 import { cloneJson, freezeJson, manifestHash } from "./manifest.js";
 import { ReviewContinuation, ReviewBeforeMutationError, type CreatedReview, type CreateReviewInput, type JsonValue, type ReviewRecord, type ReviewState, type ReviewStatus } from "./types.js";
 import { BrowserOperationError } from "../../shared/src/operation-failure.js";
@@ -12,25 +10,21 @@ const MAX_RETAINED_DOCUMENT_BYTES = 32 * 1024 * 1024;
 export interface ReviewServiceOptions {
   /** Clock injection for deterministic expiry verification. */
   now?: () => number;
-  /**
-   * False when an embedding UI (the dashboard) is the approval surface. No HTTP
-   * review page is served, and decisions arrive only through approveInProcess.
-   */
-  serve?: boolean;
 }
 
+/**
+ * Holds each write's immutable manifest until the dashboard's approved click runs it.
+ * There is no HTTP surface and no bearer capability: decisions arrive only in-process
+ * from the dashboard service, which has verified a click-minted extension approval.
+ */
 export class ReviewService {
   private readonly reviews = new Map<string, ReviewRecord>();
   private readonly active = new Set<Promise<void>>();
   private readonly now: () => number;
-  private readonly serve: boolean;
-  private server: ReturnType<typeof Bun.serve> | undefined;
-  private origin = "";
   private closed = false;
 
   constructor(options: ReviewServiceOptions = {}) {
     this.now = options.now ?? Date.now;
-    this.serve = options.serve ?? true;
   }
 
   createReview(input: CreateReviewInput): CreatedReview {
@@ -47,26 +41,22 @@ export class ReviewService {
       const retainedBytes = [...this.reviews.values()].reduce((total, review) => total + [...review.documents.values()].reduce((sum, document) => sum + document.bytes.byteLength, 0), 0);
       const addedBytes = [...documents.values()].reduce((sum, document) => sum + document.bytes.byteLength, 0);
       if (retainedBytes + addedBytes > MAX_RETAINED_DOCUMENT_BYTES) throw new Error("Review document memory capacity reached");
-      this.start();
     } catch (error) {
       clearDocuments(documents);
       throw error;
     }
-    const token = randomBytes(32).toString("base64url");
     this.reviews.set(input.id, {
       id: input.id,
       manifest,
       manifestHash: input.manifestHash,
       actionLabel: input.actionLabel,
-      token,
-      nonce: randomBytes(32).toString("base64url"),
       expiresAt: this.now() + REVIEW_TTL_MS,
       status: "awaiting_approval",
       execute: input.execute,
       revalidate: input.revalidate,
       documents,
     });
-    return { operationId: input.id, status: "awaiting_approval", reviewUrl: `${this.origin}/#review=${input.id}&token=${token}` };
+    return { operationId: input.id, status: "awaiting_approval" };
   }
 
   /** The exact manifest awaiting a decision, for an embedding UI to verify and display. */
@@ -81,14 +71,18 @@ export class ReviewService {
   }
 
   /**
-   * Approve on behalf of an embedding UI whose own authenticated user click is
-   * the human decision. Only available when this service does not serve HTTP,
-   * so the review page and this path can never both exist for one review.
+   * Run a review exactly once, if its manifest hash still matches. The caller is the
+   * dashboard service acting on a click whose extension approval it has verified.
    */
-  approveInProcess(id: string, manifestHash: string): ReviewStatus | undefined {
-    if (this.serve) throw new Error("In-process approval requires a non-serving review service");
-    const nonce = this.get(id)?.nonce;
-    return nonce ? this.decide(id, manifestHash, nonce, "approve") : undefined;
+  approve(id: string, manifestHash: string): ReviewStatus | undefined {
+    const review = this.get(id);
+    if (this.closed || !review || review.status !== "awaiting_approval" || review.manifestHash !== manifestHash) return undefined;
+    review.status = "executing";
+    // Register work before invoking caller callbacks, including callbacks that close the service.
+    const execution = Promise.resolve().then(() => this.run(review));
+    this.active.add(execution);
+    void execution.finally(() => this.active.delete(execution));
+    return this.publicStatus(review);
   }
 
   getStatus(id: string): ReviewStatus | undefined {
@@ -100,37 +94,15 @@ export class ReviewService {
     this.closed = true;
     for (const review of this.reviews.values()) {
       clearDocuments(review.documents);
-      if (review.status === "awaiting_approval") {
-        review.status = "invalidated";
-        review.nonce = null;
-      }
+      if (review.status === "awaiting_approval") review.status = "invalidated";
     }
-    await this.server?.stop(true);
     await Promise.all(this.active);
-  }
-
-  private start(): void {
-    if (this.server || !this.serve) return;
-    this.server = Bun.serve({
-      hostname: "127.0.0.1",
-      port: 0,
-      maxRequestBodySize: 4096,
-      fetch: createReviewFetch(() => this.origin, {
-        get: (id) => this.get(id),
-        decide: (id, hash, nonce, decision) => this.decide(id, hash, nonce, decision),
-      }),
-      error: () => reviewResponse({ error: "Review service unavailable" }, 500),
-    });
-    this.origin = `http://127.0.0.1:${this.server.port}`;
   }
 
   private get(id: string): ReviewRecord | undefined {
     const review = this.reviews.get(id);
     if (review && this.now() >= review.expiresAt) clearDocuments(review.documents);
-    if (review?.status === "awaiting_approval" && this.now() >= review.expiresAt) {
-      review.status = "expired";
-      review.nonce = null;
-    }
+    if (review?.status === "awaiting_approval" && this.now() >= review.expiresAt) review.status = "expired";
     return review;
   }
 
@@ -150,22 +122,6 @@ export class ReviewService {
       status: review.status,
       ...(review.result === undefined ? {} : { result: cloneJson(review.result) }),
     };
-  }
-
-  private decide(id: string, hash: string, nonce: string, decision: "approve" | "reject"): ReviewStatus | undefined {
-    const review = this.get(id);
-    if (this.closed || !review || review.status !== "awaiting_approval" || review.nonce !== nonce || review.manifestHash !== hash) return undefined;
-    review.nonce = null;
-    if (decision === "reject") {
-      review.status = "rejected";
-    } else {
-      review.status = "executing";
-      // Register work before invoking caller callbacks, including callbacks that close the service.
-      const execution = Promise.resolve().then(() => this.run(review));
-      this.active.add(execution);
-      void execution.finally(() => this.active.delete(execution));
-    }
-    return this.publicStatus(review);
   }
 
   private async run(review: ReviewRecord): Promise<void> {

@@ -3,18 +3,20 @@ import { runInNewContext } from "node:vm";
 import { parseHTML } from "linkedom";
 import { DASHBOARD_PAGE, DASHBOARD_SCRIPT } from "./page.js";
 
-async function viewer(initialState = "ready", reason?:string, submission?:{connected:boolean;authenticated:boolean;fillOnly:boolean;error?:string}, options:{fakeEventSource?:boolean;email?:string|null;insider?:boolean;term?:string|null;admin?:boolean;reason?:string} = {}) {
+async function viewer(initialState = "ready", reason?:string, submission?:{connected:boolean;authenticated:boolean;fillOnly:boolean;error?:string}, options:{localhostPage?:boolean;attachments?:unknown[];fakeEventSource?:boolean;email?:string|null;insider?:boolean;term?:string|null;admin?:boolean;reason?:string} = {}) {
   const account=typeof options.insider==='boolean'?options:undefined;
   const { document, window } = parseHTML(DASHBOARD_PAGE);
   const job = {
     key: "waterlooworks:123", summary: { jobId: "123", title: "Developer", employer: "Acme", location: "Toronto" },
     status: { state: initialState, reason, blockers: [], externalSteps: [], removedFromQueueAt: undefined as string | undefined },
-    active: false, caveats: [], rank: 12, resumeVariant: "swe", documents: [{ kind: "cover_letter", id: "letter", title: "Cover letter" }], approvalHash: "test-hash",
+    active: false, caveats: [], rank: 12, resumeVariant: "swe", documents: [{ kind: "cover_letter", id: "letter", title: "Cover letter" }], approvalHash: "test-hash", reviewHash: "content-hash",
     manualApply: { url: "https://waterlooworks.uwaterloo.ca/myAccount/co-op/full/jobs.htm", hint: "Open posting 123 in WaterlooWorks" },
   };
   const applications: Array<{applicationId:string;jobId:string;title:string;employer:string;location:string;term:string;status:string|null;jobStatus?:string;submittedAt:string}> = [];
   const writes: string[] = [];
   const preparations: string[] = [];
+  const mints: Array<[string,string]> = [];
+  const planAttachments = options.attachments ?? [];
   const bodies: unknown[] = [];
   const timers: Array<{callback:()=>unknown;delay:number}> = [];
   const eventSources: Array<{url:string;onmessage?:((event:{data:string})=>void)|null;onerror?:(()=>void)|null;closed:boolean;close():void}> = [];
@@ -37,6 +39,7 @@ async function viewer(initialState = "ready", reason?:string, submission?:{conne
     setTimeout: (callback:()=>unknown,delay=0) => { timers.push({callback,delay}); return timers.length; }, clearTimeout: () => {},
     setInterval: (callback: () => void) => { intervals.set(++nextInterval, callback); return nextInterval; }, clearInterval: (id:number) => { intervals.delete(id); },
     hasInsiderAccount: async () => false,
+    ...(options.localhostPage ? {} : {mintWriteApproval:async(action:string,target:string)=>{mints.push([action,target]);return "minted-token";}}),
     getInsiderAccount: account ? async () => account : undefined,
     submissionDeveloperModeEnabled: () => document.documentElement.hasAttribute('data-submission-developer-mode'),
     createSubmissionSettingsPanel: () => { const panel = document.createElement('section'); panel.id = 'test-submission-settings'; return panel; },
@@ -55,9 +58,9 @@ async function viewer(initialState = "ready", reason?:string, submission?:{conne
         postingRequiredDocuments: ["Resume", "Cover letter"],
         requirements: [{ label: "Resume", required: true }, { label: "Portfolio", required: false }],
         questions: [{ label: "Eligible?", required: true, options: [{ label: "Yes" }, { label: "No" }] }],
-        formBlockers: [], answers: [], attachments: [], externalSteps: ["Email recruiter"],
+        formBlockers: [], answers: [], attachments: planAttachments, externalSteps: ["Email recruiter"],
       });
-      if (path.includes("/files/")) return new Response(new Blob(["fixture-pdf"], { type: "application/pdf" }), { headers: { "content-type": "application/pdf" } });
+      if (path.includes("/files/") || path.includes("/attachments/")) return new Response(new Blob(["fixture-pdf"], { type: "application/pdf" }), { headers: { "content-type": "application/pdf" } });
       if (options.method === "POST") {
         writes.push(path);
         bodies.push(JSON.parse(options.body ?? "{}"));
@@ -79,7 +82,7 @@ async function viewer(initialState = "ready", reason?:string, submission?:{conne
     await settle();
   };
   await settle();
-  return { holdPreparation: () => { let release!:()=>void; preparationGate = new Promise<void>(resolve => { release = resolve; }); return release; }, holdApply: () => { let release!:()=>void; applyGate = new Promise<void>(resolve => { release = resolve; }); return release; }, tickDelay: (seconds = 5) => { for (let i = 0; i < seconds; i++) for (const callback of [...intervals.values()]) callback(); }, get intervalCount(){return intervals.size;}, document, window, job, applications, writes, preparations, bodies, timers, eventSources, get stateReads(){return stateReads;}, button, view, settle, refuse: () => { refuseRemoval = true; }, failPreparation: () => { failPreparation = true; } };
+  return { mints, holdPreparation: () => { let release!:()=>void; preparationGate = new Promise<void>(resolve => { release = resolve; }); return release; }, holdApply: () => { let release!:()=>void; applyGate = new Promise<void>(resolve => { release = resolve; }); return release; }, tickDelay: (seconds = 5) => { for (let i = 0; i < seconds; i++) for (const callback of [...intervals.values()]) callback(); }, get intervalCount(){return intervals.size;}, document, window, job, applications, writes, preparations, bodies, timers, eventSources, get stateReads(){return stateReads;}, button, view, settle, refuse: () => { refuseRemoval = true; }, failPreparation: () => { failPreparation = true; } };
 
 }
 
@@ -271,7 +274,8 @@ describe("job viewer", () => {
     ui.document.getElementById("apply")!.click();
     await ui.settle();
     expect(ui.writes).toEqual(["/api/jobs/waterlooworks/123/apply"]);
-    expect(ui.bodies).toEqual([{ approvalHash: "test-hash" }]);
+    expect(ui.bodies).toEqual([{ approvalHash: "test-hash", approval: "minted-token" }]);
+    expect(ui.mints).toEqual([["apply", "waterlooworks:123"]]);
   });
 
   test("ready sessions confirm immediately without repeating session preparation", async () => {
@@ -337,6 +341,59 @@ describe("job viewer", () => {
     await ui.settle();
     expect(ui.document.getElementById("apply")!.textContent).not.toContain("Click again");
     expect(ui.writes).toEqual([]);
+  });
+
+  test("a job that changes after selection is deselected with a notice and never sent", async () => {
+    const ui = await viewer("ready", undefined, {connected:true,authenticated:true,fillOnly:true});
+    ui.document.getElementById("select-all")!.click();
+    ui.document.getElementById("apply")!.click();
+    ui.job.reviewHash = "agent-rewrote-the-letter";
+    ui.job.approvalHash = "agent-rewrote-the-letter-bound";
+    await ui.timers.find(timer => timer.delay === 15000)!.callback();
+    await ui.settle();
+    expect(ui.document.getElementById("apply-count")!.textContent).toContain("0 of 1 selected");
+    expect(ui.document.getElementById("status")!.textContent).toContain("changed after you reviewed it");
+    ui.document.getElementById("apply")!.click();
+    await ui.settle();
+    expect(ui.writes).toEqual([]);
+  });
+
+  test("a job that changes after its details were opened warns even before it is selected", async () => {
+    const ui = await viewer("ready", undefined, {connected:true,authenticated:true,fillOnly:true});
+    ui.button("View in detail").click();
+    await ui.settle();
+    ui.job.reviewHash = "changed";
+    await ui.timers.find(timer => timer.delay === 15000)!.callback();
+    await ui.settle();
+    expect(ui.document.getElementById("status")!.textContent).toContain("changed after you reviewed it");
+  });
+
+  test("session binding changes alone do not count as a changed review", async () => {
+    const ui = await viewer("ready", undefined, {connected:true,authenticated:true,fillOnly:true});
+    ui.document.getElementById("select-all")!.click();
+    ui.job.approvalHash = "bound-to-a-new-session";
+    await ui.timers.find(timer => timer.delay === 15000)!.callback();
+    await ui.settle();
+    expect(ui.document.getElementById("apply-count")!.textContent).toContain("1 of 1 selected");
+    expect(ui.document.getElementById("status")!.textContent).not.toContain("changed after");
+  });
+
+  test("the localhost page explains that writes need the extension dashboard", async () => {
+    const ui = await viewer("ready", undefined, {connected:true,authenticated:true,fillOnly:true}, {localhostPage:true});
+    ui.document.getElementById("select-all")!.click();
+    ui.document.getElementById("apply")!.click();
+    await ui.settle();
+    expect(ui.document.getElementById("apply")!.textContent).not.toContain("Click again");
+    expect(ui.document.getElementById("status")!.textContent).toContain("extension dashboard");
+    expect(ui.writes).toEqual([]);
+  });
+
+  test("shows and previews each attachment the plan will submit", async () => {
+    const ui = await viewer("ready", undefined, undefined, {attachments:[{requirementId:"slot 1",kind:"file",label:"Portfolio",name:"portfolio.pdf"}]});
+    ui.button("View in detail").click();
+    await ui.settle();
+    expect(ui.document.body.textContent).toContain("Portfolio: portfolio.pdf (your file)");
+    expect(ui.button("View attachment: Portfolio (portfolio.pdf)")).toBeDefined();
   });
 
   test("In progress is first while processing and disappears on completion", async () => {
@@ -498,6 +555,7 @@ test("dashboard shows the blocker and requires acknowledgement and a reason befo
   const writes: Array<{ path: string; body: unknown }> = [];
   runInNewContext(DASHBOARD_SCRIPT, {
     document, URL, setTimeout: (callback: () => Promise<void>) => { poll = callback; return 1; }, clearTimeout: () => {},
+    mintWriteApproval: async () => "minted-token",
     dashboardRequest: async (path: string, body?: unknown) => {
       if (path === "/api/state") return { jobs: [], submissionBlocks: blocks, health: { authenticated: true, bridgeConnected: true } };
       writes.push({ path, body });
@@ -532,7 +590,7 @@ test("dashboard shows the blocker and requires acknowledgement and a reason befo
   expect(release.disabled).toBe(false);
   form.dispatchEvent(new window.Event("submit"));
   await settle();
-  expect(writes).toEqual([{ path: "/api/submission-blocks/uncertain-attempt/release", body: { updatedAt: 2, acknowledged: true, reason: reason.value } }]);
+  expect(writes).toEqual([{ path: "/api/submission-blocks/uncertain-attempt/release", body: { updatedAt: 2, acknowledged: true, reason: reason.value, approval: "minted-token" } }]);
   expect(panel.hidden).toBe(true);
   expect(document.getElementById("status")!.textContent).toContain("Nothing was submitted or retried");
 });
@@ -552,7 +610,7 @@ test("fill-only selection requires a fresh confirmation and sends the chosen mod
   expect(ui.document.getElementById("apply")!.textContent).toContain("without submitting");
   ui.document.getElementById("apply")!.click();
   await ui.settle();
-  expect(ui.bodies).toEqual([{ approvalHash: "test-hash", executionMode: "fill_only" }]);
+  expect(ui.bodies).toEqual([{ approvalHash: "test-hash", executionMode: "fill_only", approval: "minted-token" }]);
 });
 
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { attachmentDisposition, captureDocuments, clearDocuments } from "./documents.js";
+import { captureDocuments, clearDocuments } from "./documents.js";
 
 const pdf = () => new TextEncoder().encode("%PDF-1.7\nfixture\n%%EOF\n");
 
@@ -28,10 +28,5 @@ describe("captured review PDFs", () => {
     const large = new Uint8Array(4.5 * 1024 * 1024);
     large.set(pdf());
     expect(() => captureDocuments(Array.from({ length: 8 }, (_, index) => ({ ...document, id: String(index), bytes: large })))).toThrow("32 MiB");
-  });
-
-  test("encodes an attachment filename without header or path syntax", () => {
-    const header = attachmentDisposition("folder/Résumé's \"copy\".pdf");
-    expect(header).toBe("attachment; filename=\"document.pdf\"; filename*=UTF-8''folder_R%C3%A9sum%C3%A9%27s%20%22copy%22.pdf");
   });
 });

@@ -2,7 +2,7 @@ import { copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 
 import { randomBytes } from "node:crypto";
 import { dirname, join } from "node:path";
 import type { z } from "zod";
-import { bundledTemplate, formatJobKey, WorkspacePaths, type JobKey } from "./paths.js";
+import { bundledTemplate, formatJobKey, isJobId, isSlug, WorkspacePaths, type JobKey } from "./paths.js";
 import {
   ApplicationPlanSchema, CoverLetterSchema, JobDocumentSchema, JobStatusSchema, ProfileSchema, ResumeUploadsSchema, ResumeVariantSchema, SearchRecordSchema, StoredPostingSchema,
   type ApplicationPlan, type CoverLetter, type JobDocument, type JobState, type JobStatus, type Profile, type ResumeUploads, type ResumeVariant, type SearchRecord, type StoredPosting,
@@ -25,7 +25,7 @@ async function exists(path: string): Promise<boolean> {
   return stat(path).then(() => true, () => false);
 }
 
-async function readJson<T>(path: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>): Promise<T | undefined> {
+async function readJson<T>(path: string, schema: z.ZodType<T, unknown>): Promise<T | undefined> {
   let text: string;
   try { text = await readFile(path, "utf8"); }
   catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw error; }
@@ -89,6 +89,8 @@ export class Workspace {
     const names = await readdir(this.paths.resumesDir).catch(() => [] as string[]);
     const result: Array<{ variant: ResumeVariant; pdf?: string }> = [];
     for (const name of names.sort()) {
+      // Stray entries (a .DS_Store, say) are not variants and must not fail the listing.
+      if (!isSlug(name)) continue;
       const variant = await this.getResumeVariant(name).catch(() => undefined);
       if (!variant) continue;
       const pdf = this.paths.resume(name).pdf;
@@ -144,6 +146,7 @@ export class Workspace {
     for (const name of (await readdir(paths.documentsDir).catch(() => [] as string[])).sort()) {
       if (!name.endsWith(".json")) continue;
       const id = name.slice(0, -".json".length);
+      if (!isSlug(id)) continue;
       const files = this.paths.jobDocument(key, id);
       const document = await readJson(files.json, JobDocumentSchema).catch(() => undefined);
       if (document && await exists(files.pdf)) result.push({ id, kind: "document", title: document.title, pdf: files.pdf });
@@ -190,7 +193,9 @@ export class Workspace {
   async listJobs(filter?: { states?: readonly JobState[] }): Promise<JobRecord[]> {
     const records: JobRecord[] = [];
     for (const source of await readdir(this.paths.jobsDir).catch(() => [] as string[])) {
+      if (!isSlug(source)) continue;
       for (const jobId of await readdir(join(this.paths.jobsDir, source)).catch(() => [] as string[])) {
+        if (!isJobId(jobId)) continue;
         const key = { source, jobId };
         const [posting, status, plan] = await Promise.all([this.getPosting(key), this.getStatus(key), this.getPlan(key)]).catch(() => [undefined, undefined, undefined] as const);
         if (!posting || !status || (filter?.states && !filter.states.includes(status.state))) continue;

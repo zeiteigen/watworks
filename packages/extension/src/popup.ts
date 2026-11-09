@@ -12,12 +12,15 @@ async function refresh(): Promise<void> {
   const allowed = account?.insider || account?.selfHosted;
   const settingsLink = document.querySelector<HTMLElement>('[href="submission-settings.html"]');
   if (settingsLink) settingsLink.hidden = !allowed && !developerModeEnabled(document);
+  const developer = developerModeEnabled(document);
+  document.querySelector<HTMLElement>("#start-service")!.hidden = !developer;
+  document.querySelector<HTMLElement>("#local-dashboard")!.hidden = !developer;
   if (!allowed) return;
   const inbox=await chrome.runtime.sendMessage({type:"discoveriesList"});
   const count=Array.isArray(inbox?.value)?inbox.value.length:0;
   popupStatus.textContent+=` ${count} saved discoveries.`;
 }
-document.querySelector("#workspace")!.addEventListener("click", () => void chrome.tabs.create({ url: chrome.runtime.getURL("dashboard.html") }));
+document.querySelector("#workspace")!.addEventListener("click", () => void chrome.tabs.create({ url: chrome.runtime.getURL("hosted.html") }));
 void refresh().catch(error=>{popupStatus.textContent=String(error);});
 
 document.querySelector("#start-service")!.addEventListener("click", async () => {

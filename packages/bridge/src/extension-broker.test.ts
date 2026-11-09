@@ -2,8 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { createExtensionBridgeServer } from "./extension-broker.js";
 import { EXPECTED_EXTENSION_ID } from "../../shared/src/extension-protocol.js";
 import { readCommandStream } from "../../shared/src/command-stream.js";
+import { decodeOperationFailure } from "../../shared/src/operation-failure.js";
 
-const uploadArgs = () => ["67", "file.pdf", {filename:"file.pdf",bytes:new Uint8Array([1]),size:1,sha256:"fixture"}, "account", crypto.randomUUID()];
+const CLICK = "c".repeat(43);
+const uploadArgs = () => ["67", "file.pdf", {filename:"file.pdf",size:1,sha256:"fixture"}, "account", crypto.randomUUID()];
 
 describe("extension command broker", () => {
   test("progress is a bounded read command with validated operation identity and enum-only results", async () => {
@@ -117,7 +119,7 @@ describe("extension command broker", () => {
       await new Promise<void>((resolve,reject)=>{socket.onopen=()=>resolve();socket.onerror=()=>reject(new Error("socket failed"));});
       socket.send(JSON.stringify({type:"hello",protocolVersion:1,extensionVersion:"1",capabilities:["uploadDocument","getJob","commandProgress"]}));
       await Bun.sleep(10);
-      const responsePromise = fetch(`${root}/command`, {method:"POST",headers:{"content-type":"application/json",accept:"application/x-ndjson"},body:JSON.stringify({method:"uploadDocument",args:uploadArgs()})});
+      const responsePromise = fetch(`${root}/command`, {method:"POST",headers:{"content-type":"application/json",accept:"application/x-ndjson"},body:JSON.stringify({method:"uploadDocument",args:uploadArgs(),approval:CLICK})});
       const command = await new Promise<Record<string, unknown>>(resolve => {socket.onmessage=event=>resolve(JSON.parse(String(event.data)));});
       const response = await responsePromise;
       expect(response.headers.get("content-type")).toContain("application/x-ndjson");
@@ -149,7 +151,7 @@ describe("extension command broker", () => {
       socket.send(JSON.stringify({type:"hello",protocolVersion:1,extensionVersion:"1",capabilities:["uploadDocument","commandProgress"]}));
       await Bun.sleep(10);
       let commands = 0;
-      const responsePromise = fetch(`${root}/command`, {method:"POST",headers:{"content-type":"application/json",accept:"application/x-ndjson"},body:JSON.stringify({method:"uploadDocument",args:uploadArgs()})});
+      const responsePromise = fetch(`${root}/command`, {method:"POST",headers:{"content-type":"application/json",accept:"application/x-ndjson"},body:JSON.stringify({method:"uploadDocument",args:uploadArgs(),approval:CLICK})});
       const command = await new Promise<Record<string, unknown>>(resolve => {socket.onmessage=event=>{commands++;resolve(JSON.parse(String(event.data)));};});
       const response = await responsePromise;
       socket.close();
@@ -157,6 +159,46 @@ describe("extension command broker", () => {
       expect(text).toContain("Extension disconnected; request outcome is unknown");
       expect(commands).toBe(1);
       expect(command.method).toBe("uploadDocument");
+    } finally {socket.close();app.stop();}
+  });
+
+  test.each([
+    ["direct", "submitApplication", [{ jobId: "1" }, []]],
+    ["pinned", "submissionCommand", ["a".repeat(64), "submitApplication", [{ jobId: "1" }, []]]],
+    ["upload", "uploadDocument", uploadArgs()],
+  ] as const)("a forged %s write over /command never reaches the extension", async (_name, method, args) => {
+    const app = createExtensionBridgeServer(0);
+    const root = `http://127.0.0.1:${app.server.port}`;
+    const socket = new WebSocket(root.replace("http", "ws") + "/extension", {headers:{origin:`chrome-extension://${EXPECTED_EXTENSION_ID}`}} as any);
+    try {
+      await new Promise<void>((resolve,reject)=>{socket.onopen=()=>resolve();socket.onerror=()=>reject(new Error("socket failed"));});
+      socket.send(JSON.stringify({type:"hello",protocolVersion:1,extensionVersion:"1",capabilities:["submitApplication","uploadDocument","submissionCommand"]}));
+      await Bun.sleep(10);
+      let relayed = 0;
+      socket.onmessage = () => { relayed++; };
+      const response = await fetch(`${root}/command`, {method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({method,args})});
+      expect(response.status).toBe(403);
+      const failure = decodeOperationFailure((await response.json() as {error:string}).error);
+      expect(failure?.code).toBe("no_remote_mutation");
+      await Bun.sleep(10);
+      expect(relayed).toBe(0);
+    } finally {socket.close();app.stop();}
+  });
+
+  test("an approval reaches the extension in the command envelope", async () => {
+    const app = createExtensionBridgeServer(0);
+    const root = `http://127.0.0.1:${app.server.port}`;
+    const socket = new WebSocket(root.replace("http", "ws") + "/extension", {headers:{origin:`chrome-extension://${EXPECTED_EXTENSION_ID}`}} as any);
+    try {
+      await new Promise<void>((resolve,reject)=>{socket.onopen=()=>resolve();socket.onerror=()=>reject(new Error("socket failed"));});
+      socket.send(JSON.stringify({type:"hello",protocolVersion:1,extensionVersion:"1",capabilities:["submitApplication"]}));
+      await Bun.sleep(10);
+      const pending = fetch(`${root}/command`, {method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({method:"submitApplication",args:[{jobId:"1"},[]],approval:CLICK})});
+      const command = await new Promise<Record<string, unknown>>(resolve => {socket.onmessage=event=>resolve(JSON.parse(String(event.data)));});
+      expect(command.approval).toBe(CLICK);
+      socket.send(JSON.stringify({type:"result",requestId:command.requestId,error:"refused"}));
+      await pending;
+      expect((await fetch(`${root}/command`, {method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({method:"getJob",args:["1",{}],approval:"short"})})).status).toBe(400);
     } finally {socket.close();app.stop();}
   });
 

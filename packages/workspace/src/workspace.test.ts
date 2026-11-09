@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildCoverLetter, buildJobDocument, buildResumeVariant } from "./documents.js";
@@ -51,6 +51,24 @@ describe("LaTeX rendering", () => {
   test("escapes every special character so text cannot inject commands", () => {
     expect(escapeLatex("\\input{/etc/passwd} 100% & $x_1$ #1 ~^<>")).toBe("\\textbackslash{}input\\{/etc/passwd\\} 100\\% \\& \\$x\\_1\\$ \\#1 \\textasciitilde{}\\textasciicircum{}\\textless{}\\textgreater{}");
     expect(inline("a **b_c** d")).toBe("a \\textbf{b\\_c} d");
+  });
+
+  test("links cannot reopen TeX through caret notation, braces, or backslashes", () => {
+    const render = (url: string) => renderResumeBody(ResumeDocumentSchema.parse({ heading: { name: "N", contacts: [{ text: "site", url }] }, sections: [{ kind: "list", title: "S", items: ["i"] }] }));
+    const body = render("https://x.example/^^7d^^7bL^^7d^^5cinput^^7b/etc/passwd^^7d");
+    expect(body).not.toContain("^");
+    expect(body).toContain("https://x.example/\\%5E\\%5E7d");
+    expect(render("https://x.example/a}\\input{b} c")).toContain("https://x.example/a\\%7D\\%5Cinput\\%7Bb\\%7D\\%20c}");
+    expect(render("https://x.example/a%20b#c")).toContain("https://x.example/a\\%20b\\#c}");
+    expect(render("github.com/jane")).toContain("\\href{github.com/jane}");
+    expect(render("tel:+15551234")).toContain("\\href{tel:+15551234}");
+    expect(() => render("file:///etc/passwd")).toThrow("Unsupported link scheme");
+    expect(() => render("javascript:alert(1)")).toThrow("Unsupported link scheme");
+  });
+
+  test("profile links get the same protection", () => {
+    const body = renderCoverLetter("%%WAT:SENDER_CONTACT%% %%WAT:BODY%%", { recipient: { company: "C", addressLines: [] }, greeting: "Hi", paragraphs: ["P"], closing: "Bye" }, { name: "N", email: "n@example.com", links: [{ label: "site", url: "https://x.example/^^5cinput" }] });
+    expect(body).not.toContain("^");
   });
 
   test("renders resume sections with Jake's macros", () => {
@@ -161,4 +179,18 @@ describe.skipIf(!findLatexEngine())("PDF generation", () => {
     expect(await planBlockers(ws, key, withDocument, form())).toEqual([]);
     expect((await ws.listJobs())[0]?.documents.map(doc => doc.id)).toEqual(["cover-letter", "project-summary"]);
   }, 300_000);
+});
+
+describe("stray directory entries", () => {
+  test("do not fail job, document, or resume listings", async () => {
+    const value = await workspace();
+    const key = { source: "waterlooworks", jobId: "123" };
+    await value.saveJob(key, { summary: { source: key.source, jobId: key.jobId, title: "T", employer: "E", requiredDocuments: [] }, posting: {} }, "d");
+    const stray = [join(value.paths.jobsDir, ".DS_Store"), join(value.paths.jobsDir, "waterlooworks", ".DS_Store"), join(value.paths.jobsDir, "waterlooworks", "123.bak"), join(value.paths.resumesDir, ".DS_Store"), join(value.paths.job(key).documentsDir, "Bad Name.json")];
+    await mkdir(value.paths.job(key).documentsDir, { recursive: true });
+    for (const path of stray) await writeFile(path, "{}");
+    expect((await value.listJobs()).map(job => job.key)).toEqual(["waterlooworks:123"]);
+    expect(await value.listResumeVariants()).toEqual([]);
+    expect(await value.listJobDocuments(key)).toEqual([]);
+  });
 });

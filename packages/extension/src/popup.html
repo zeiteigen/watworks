@@ -14,10 +14,11 @@
   </div>
   <p id="status" role="status" aria-live="polite">Checking connection…</p>
   <div class="popup-actions" aria-label="Workspace actions">
-    <button id="workspace" type="button">Open Dashboard <span aria-hidden="true">↗</span></button>
-    <button id="start-service" type="button" class="secondary">Start workspace service</button>
+    <button id="workspace" type="button">Open dashboard <span aria-hidden="true">↗</span></button>
+    <button id="start-service" type="button" class="secondary" hidden>Start local workspace service</button>
   </div>
   <nav class="popup-links" aria-label="More tools">
+    <a hidden id="local-dashboard" href="dashboard.html" target="_blank" rel="noopener">Advanced local dashboard <span aria-hidden="true">↗</span></a>
     <a href="inbox.html" target="_blank" rel="noopener">Discovery inbox and settings <span aria-hidden="true">↗</span></a>
     <a hidden href="submission-settings.html" target="_blank" rel="noopener">Submission server <span aria-hidden="true">↗</span></a>
     <a hidden id="submission-developer" href="diagnostics.html" target="_blank" rel="noopener">Tab diagnostics <span aria-hidden="true">↗</span></a>

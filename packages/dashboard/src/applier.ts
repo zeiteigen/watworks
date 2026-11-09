@@ -11,9 +11,7 @@ import type { Workspace } from "../../workspace/src/store.js";
 import { operationFailureSchema } from "../../shared/src/operation-failure.js";
 import { applicationProgressSchema, progressLabel } from "../../shared/src/application-progress.js";
 
-const TERMINAL = new Set(["review_required", "rejected", "expired", "invalidated", "failed", "succeeded", "outcome_unknown"]);
-
-export interface PendingConfirmation { operationId: string; manifestHash: string; documents: Array<{ id: string; name: string }>; fillOnly: boolean }
+const TERMINAL = new Set(["review_required", "expired", "invalidated", "failed", "succeeded", "outcome_unknown"]);
 
 /**
  * Runs applications that the user approved by clicking in the dashboard.
@@ -21,9 +19,7 @@ export interface PendingConfirmation { operationId: string; manifestHash: string
  * no automatic retry); the dashboard click replaces the separate review page.
  */
 export class Applier {
-  private readonly snapshots = new Map<string,ApprovedSnapshot>();
   private queue: Promise<unknown> = Promise.resolve();
-  private readonly confirmations = new Map<string, PendingConfirmation>();
   private readonly active = new Set<string>();
   private readonly listeners=new Set<()=>void>();
 
@@ -36,7 +32,6 @@ export class Applier {
     const status=await this.workspace.setStatus(...args);this.changed();return status;
   }
 
-  pending(key: JobKey): PendingConfirmation | undefined { return this.confirmations.get(formatJobKey(key)); }
   isActive(key: JobKey): boolean { return this.active.has(formatJobKey(key)); }
 
   /** Applications run one at a time, in click order. */
@@ -50,16 +45,11 @@ export class Applier {
     }).finally(() => {this.active.delete(id);this.changed();});
   }
 
-  async apply(key: JobKey, snapshot?: ApprovedSnapshot, executionMode: "submit" | "fill_only" = "submit", submissionBinding?: string): Promise<void> {
-    if(snapshot)this.snapshots.set(formatJobKey(key),snapshot);
-    try { await withSubmissionBinding(submissionBinding,()=>this.applyPlan(key,snapshot,executionMode)); }
-    finally { await this.cleanSnapshot(key); }
+  async apply(key: JobKey, snapshot?: ApprovedSnapshot, executionMode: "submit" | "fill_only" = "submit", submissionBinding?: string, approval?: string): Promise<void> {
+    try { await withSubmissionBinding(submissionBinding,()=>this.applyPlan(key,snapshot,executionMode,approval)); }
+    finally { await snapshot?.dispose().catch(() => undefined); }
   }
-  private async cleanSnapshot(key: JobKey): Promise<void> {
-    if((await this.workspace.getStatus(key))?.state==="confirm_required")return;
-    const id=formatJobKey(key);const snapshot=this.snapshots.get(id);this.snapshots.delete(id);await snapshot?.dispose();
-  }
-  private async applyPlan(key: JobKey, snapshot: ApprovedSnapshot | undefined, executionMode: "submit" | "fill_only"): Promise<void> {
+  private async applyPlan(key: JobKey, snapshot: ApprovedSnapshot | undefined, executionMode: "submit" | "fill_only", approval?: string): Promise<void> {
     const status = await this.workspace.getStatus(key);
     if (status?.state !== "ready" && status?.state !== "failed") throw new Error(`Job is ${status?.state ?? "unknown"}`);
     // A preceding uncertain write quarantines the account. Queued jobs have
@@ -72,6 +62,10 @@ export class Applier {
 
     const form = await this.workflow.getApplicationForm(key.jobId);
     await this.workspace.saveForm(key, form);
+    if (snapshot && form.version !== snapshot.formVersion) {
+      await this.setStatus(key, { state: "planned", reason: "The application form changed after you reviewed it. Nothing was submitted.", blockers: ["The application form changed; check this job's preparation and review it again"] });
+      return;
+    }
     const blockers = await planBlockers(this.workspace, key, plan, form, snapshot?.resumePath);
     if (blockers.length) {
       await this.setStatus(key, { state: "planned", reason: "Application preparation is incomplete; fix the listed requirements before applying", blockers });
@@ -81,27 +75,17 @@ export class Applier {
     if (!resumeSlot) return void await this.fail(key, "The application form has no resume slot");
 
     await this.setStatus(key, { state: "applying", reason: "Checking the resume" });
-    const resumeId = await this.ensureResume(key, plan.resumeVariant, resumeSlot.typeId, snapshot?.resumePath);
+    const resumeId = await this.ensureResume(key, plan.resumeVariant, resumeSlot.typeId, snapshot?.resumePath, approval);
 
     await this.setStatus(key, { state: "applying", reason: executionMode === "fill_only" ? "Preparing to fill the form" : "Preparing the application" });
-    const prepared = await this.workflow.prepareApplication(toApplicationInput(this.workspace, key, plan, resumeId), executionMode);
+    const prepared = await this.workflow.prepareApplication(toApplicationInput(this.workspace, key, plan, resumeId), executionMode, approval);
     if (prepared.status !== "prepared" || !("draftId" in prepared)) return void await this.fail(key, "Application is blocked", prepared.blockers);
     const created = await this.workflow.submitApplication(prepared.draftId);
     await this.settle(key, await this.approve(created.operationId, manifest => manifest.kind === "application" && manifest.jobId === key.jobId, key));
   }
 
-  /** Second click: approve the exact server-processed attachments, then submit. */
-  async confirm(key: JobKey, manifestHash: string): Promise<void> {
-    const pending = this.confirmations.get(formatJobKey(key));
-    if (!pending || pending.manifestHash !== manifestHash) throw new Error("Nothing to confirm, or the processed documents changed; reload");
-    this.confirmations.delete(formatJobKey(key));
-    await this.setStatus(key, { state: "applying", reason: pending.fillOnly ? "Filling form with processed documents without submitting" : "Submitting with processed documents" });
-    try { await this.settle(key, await this.approve(pending.operationId, manifest => manifest.kind === "application" && manifest.jobId === key.jobId, key)); }
-    finally { await this.cleanSnapshot(key); }
-  }
-
   /** Upload a resume variant once per content hash and remember its WaterlooWorks document ID. */
-  private async ensureResume(key:JobKey, variant: string, typeId: string, frozenPdf?: string): Promise<string> {
+  private async ensureResume(key:JobKey, variant: string, typeId: string, frozenPdf?: string, approval?: string): Promise<string> {
     const pdf = frozenPdf ?? this.workspace.paths.resume(variant).pdf;
     const sha256 = createHash("sha256").update(await readFile(pdf)).digest("hex");
     const known = (await this.workspace.getResumeUploads(variant)).uploads.find(item => item.source === "waterlooworks" && item.sha256 === sha256);
@@ -111,8 +95,13 @@ export class Applier {
     }
     const label = (await this.workspace.getResumeVariant(variant))?.label ?? variant;
     const name = `${label} ${sha256.slice(0, 8)}`.slice(0, 255);
+    const recovered = await this.workflow.recoverUpload(typeId, name, sha256);
+    if (recovered) {
+      await this.workspace.recordResumeUpload(variant, { source: "waterlooworks", sha256, documentId: recovered.id, name, uploadedAt: new Date().toISOString() });
+      return recovered.id;
+    }
     await this.setStatus(key, {state:"applying",reason:"Preparing resume upload"});
-    const created = await this.workflow.uploadDocument(typeId, name, pdf);
+    const created = await this.workflow.uploadDocument(typeId, name, pdf, approval);
     let state = await this.approve(created.operationId, manifest => manifest.kind === "upload_document", key);
     // The processed PDF is the user's own generated resume; confirm it as part of the same click.
     if (state.status === "review_required") state = await this.approve(operationOf(state), manifest => manifest.kind === "processed_document", key);
@@ -140,7 +129,7 @@ export class Applier {
       }).catch(()=>{});
     });
     try {
-      if (!this.reviews.approveInProcess(operationId, review.manifestHash)) throw new Error("The operation could not be approved");
+      if (!this.reviews.approve(operationId, review.manifestHash)) throw new Error("The operation could not be approved");
       for (;;) {
         const status = this.reviews.getStatus(operationId);
         if (!status) throw new Error("The operation disappeared");
@@ -154,13 +143,13 @@ export class Applier {
     const result = state.result as Record<string, unknown> | undefined;
     switch (state.status) {
       case "succeeded":
-        this.confirmations.delete(formatJobKey(key));
         await this.setStatus(key, {
           state: result?.status === "form_filled" ? "form_filled" : "applied", reason: result?.status === "form_filled" ? "Form filled. Click Submit in the open WaterlooWorks tab. We’ll check after two minutes and return this job to Ready to apply if it was not submitted." : "Submitted", ...(typeof result?.applicationId === "string" && result.applicationId ? { applicationId: result.applicationId } : {}),
           externalSteps: Array.isArray(result?.externalSteps) ? result.externalSteps.map(String) : [],
         });
         return;
       case "review_required": {
+        // The original Apply click covers the verified, server-processed PDFs (docs/protocol.md).
         const operationId = operationOf(state);
         const review = this.reviews.inspect(operationId);
         if (!review) throw new Error("Processed-document review is unavailable");
@@ -178,11 +167,6 @@ export class Applier {
 
   private async fail(key: JobKey, reason: string, blockers: string[] = []): Promise<JobStatus> {
     return this.setStatus(key, { state: "failed", reason, blockers });
-  }
-
-  documentBytes(key: JobKey, documentId: string): Uint8Array | undefined {
-    const pending = this.confirmations.get(formatJobKey(key));
-    return pending ? this.reviews.document(pending.operationId, documentId) : undefined;
   }
 }
 

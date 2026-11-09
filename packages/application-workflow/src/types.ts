@@ -136,9 +136,9 @@ export interface ApplicationGateway {
   /** Return a fresh content revision for a selected library document. */
   getDocument?(documentId: string): Promise<LibraryDocument>;
   getDocumentSnapshot?(documentId: string): Promise<{ document: LibraryDocument; bytes: Uint8Array }>;
-  stageAttachments?(manifest: ApplicationManifest, files: ReadonlyMap<string, PreparedFile>, attemptId?: string): Promise<StagedAttachment[]>;
+  stageAttachments?(manifest: ApplicationManifest, files: ReadonlyMap<string, PreparedFile>, attemptId?: string, approval?: string): Promise<StagedAttachment[]>;
   getAccount(): Promise<{ accountKey: string; accountLabel: string }>;
-  uploadDocument(typeId: string, name: string, file: PreparedFile, accountKey: string, attemptId?: string): Promise<LibraryDocument>;
+  uploadDocument(typeId: string, name: string, file: PreparedFile, accountKey: string, attemptId?: string, approval?: string): Promise<LibraryDocument>;
   setDefaultDocuments(typeId: string, documentIds: string[], accountKey: string): Promise<{ documentIds: string[] }>;
   submitApplication(
     manifest: ApplicationManifest,
@@ -147,6 +147,8 @@ export interface ApplicationGateway {
     staged?: readonly StagedAttachment[],
     /** Durable approval/attempt identity; browser replay protection follows this attempt. */
     attemptId?: string,
+    /** Click-minted write approval; the extension refuses writes without it. */
+    approval?: string,
   ): Promise<SubmissionReceipt>;
   getApplicationStatus(jobId: string): Promise<{ jobId: string; hasApplication: boolean; applicationId?: string }>;
   /** A production adapter must explicitly identify its verified write contracts. */

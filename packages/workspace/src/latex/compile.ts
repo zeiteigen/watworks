@@ -28,7 +28,12 @@ export class LatexCompileError extends Error {
 
 export interface CompiledPdf { bytes: Uint8Array; pages: number; engine: LatexEngine["name"] }
 
-/** Compile in an isolated temp directory so templates cannot read or write the workspace. */
+/**
+ * Compile in a temp directory with shell escape off. This is not a read sandbox: Tectonic
+ * --untrusted and pdflatex can both still \\input absolute paths, and neither has an option
+ * that stops it (pdflatex's openin_any=p did not, when tested). Safety rests on render.ts
+ * escaping every field so generated content cannot issue TeX commands. Templates are the user's own.
+ */
 export async function compileLatex(source: string, options: { timeoutMs?: number } = {}): Promise<CompiledPdf> {
   const engine = findLatexEngine();
   if (!engine) throw new Error("No LaTeX engine found. Run `bun run setup` to install Tectonic.");

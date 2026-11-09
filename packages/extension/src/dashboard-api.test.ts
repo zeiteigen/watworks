@@ -1,7 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { createDashboardRequest, WORKSPACE_OFFLINE, WORKSPACE_SERVICE } from "./dashboard-api.js";
+import { createDashboardRequest, createWriteApprovalMinter, WORKSPACE_OFFLINE, WORKSPACE_SERVICE } from "./dashboard-api.js";
 
 describe("extension dashboard data", () => {
+  test("write approvals come from the background worker and surface its refusal", async () => {
+    const messages: Record<string, unknown>[] = [];
+    const mint = createWriteApprovalMinter(async message => { messages.push(message); return { ok: true, value: { token: "minted" } }; });
+    expect(await mint("apply", "waterlooworks:123")).toBe("minted");
+    expect(messages).toEqual([{ type: "mintWriteApproval", action: "apply", target: "waterlooworks:123" }]);
+    await expect(createWriteApprovalMinter(async () => ({ ok: false, error: "Refused" }))("apply", "x")).rejects.toThrow("Refused");
+  });
+
   test("prepares the submission session through the native extension route", async () => {
     const messages: Record<string, unknown>[] = [];
     const api = createDashboardRequest(async message => {

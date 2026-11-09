@@ -6,7 +6,7 @@ import { AttemptConflictError, AttemptLedger } from "./ledger.js";
 import { fingerprint } from "./fingerprint.js";
 import { readApplicationPdf } from "./files.js";
 import { validateApplication } from "./validate.js";
-import type { ApplicationGateway, ApplicationInput, ApplicationManifest, PreparedFile, StagedAttachment } from "./types.js";
+import type { ApplicationGateway, ApplicationInput, ApplicationManifest, LibraryDocument, PreparedFile, StagedAttachment } from "./types.js";
 
 interface Draft {
   input: ApplicationInput;
@@ -14,7 +14,13 @@ interface Draft {
   files: Map<string, PreparedFile>;
   expiresAt: number;
   review?: CreatedReview;
+  /** The processed-PDF review that follows staging, when there is one. */
+  continuation?: CreatedReview;
+  /** Click-minted approval presented with this draft's writes. */
+  approval?: string;
 }
+
+const FINISHED = new Set(["expired", "invalidated", "failed", "succeeded", "outcome_unknown"]);
 
 export interface ApplicationWorkflowOptions {
   gateway: ApplicationGateway;
@@ -35,13 +41,13 @@ export class ApplicationWorkflow {
     this.reviews = options.reviews ?? new ReviewService();
   }
 
-  get capabilities() { return { ...this.options.gateway.capabilities, approval: "localhost", documentRootsConfigured: this.options.documentRoots.length > 0 }; }
+  get capabilities() { return { ...this.options.gateway.capabilities, approval: "dashboard", documentRootsConfigured: this.options.documentRoots.length > 0 }; }
   listDocuments() { return this.options.gateway.listDocuments(); }
   getOperationProgress(operationId: string) { return this.options.gateway.getOperationProgress?.(operationId) ?? Promise.resolve(null); }
   watchOperationProgress(operationId:string,listener:(progress:import("../../shared/src/application-progress.js").ApplicationProgress)=>void):()=>void{return this.options.gateway.watchOperationProgress?.(operationId,listener)??(()=>{});}
   getApplicationForm(jobId: string) { return this.options.gateway.getApplicationForm(jobId); }
 
-  async prepareApplication(input: ApplicationInput, executionMode: "submit" | "fill_only" = "submit") {
+  async prepareApplication(input: ApplicationInput, executionMode: "submit" | "fill_only" = "submit", approval?: string) {
     this.prune();
     if (this.drafts.size >= 16) throw new Error("Too many prepared applications; wait for existing drafts to expire");
     const form = await this.options.gateway.getApplicationForm(input.jobId);
@@ -63,7 +69,7 @@ export class ApplicationWorkflow {
     const draftId = randomUUID();
     const manifest = structuredClone(result.manifest);
     if (executionMode === "fill_only") manifest.executionMode = executionMode;
-    this.drafts.set(draftId, { input: structuredClone(input), manifest, files, expiresAt: Date.now() + 15 * 60_000 });
+    this.drafts.set(draftId, { input: structuredClone(input), manifest, files, expiresAt: Date.now() + 15 * 60_000, ...(approval ? { approval } : {}) });
     return { status: "prepared", draftId, manifest: structuredClone(manifest), manifestHash: fingerprint(manifest), blockers: [] };
   }
 
@@ -82,7 +88,8 @@ export class ApplicationWorkflow {
     const draft = this.drafts.get(draftId);
     if (!draft || draft.expiresAt <= Date.now()) throw new Error("Application draft is missing or expired; prepare it again");
     if (draft.review) return { ...draft.review };
-    await this.revalidate(draft);
+    try { await this.revalidate(draft); }
+    catch (error) { this.drafts.delete(draftId); throw error; }
     draft.expiresAt = Date.now() + 15 * 60_000;
     const id = randomUUID();
     const hash = fingerprint(draft.manifest);
@@ -94,13 +101,13 @@ export class ApplicationWorkflow {
       execute: () => {
         if (draft.files.size && this.options.gateway.stageAttachments) return this.execute(id, manifest.accountKey, fingerprint(["stage_documents", manifest.accountKey, manifest.jobId, hash]), hash, "stage_application_documents", async ledger => {
           ledger.transition(id, "submitting");
-          const staged = await this.options.gateway.stageAttachments!(structuredClone(manifest), cloneFiles(draft.files), id);
-          const review = await this.reviewStagedApplication(draft, manifest, staged);
+          const staged = await this.options.gateway.stageAttachments!(structuredClone(manifest), cloneFiles(draft.files), id, draft.approval);
+          const review = draft.continuation = await this.reviewStagedApplication(draft, manifest, staged);
           ledger.transition(id, "succeeded");
           return new ReviewContinuation(review);
         });
         return this.execute(id, manifest.accountKey, fingerprint(["application", manifest.accountKey, manifest.jobId, manifest.term]), hash, "application", async ledger => {
-        const receipt = await this.options.gateway.submitApplication(structuredClone(manifest), cloneFiles(draft.files), () => ledger.transition(id, "submitting"), undefined, id);
+        const receipt = await this.options.gateway.submitApplication(structuredClone(manifest), cloneFiles(draft.files), () => ledger.transition(id, "submitting"), undefined, id, draft.approval);
         if (ledger.get(id)?.state !== "submitting" || receipt.manifestHash !== hash || receipt.jobId !== manifest.jobId || (manifest.executionMode === "fill_only" ? receipt.status !== "form_filled" || receipt.applicationId !== "" : receipt.status !== "submitted" || !receipt.applicationId)) throw new Error("Submission receipt could not be verified");
         ledger.transition(id, "succeeded", receipt.applicationId || undefined);
         draft.files.clear();
@@ -133,7 +140,7 @@ export class ApplicationWorkflow {
         }
       },
       execute: () => this.execute(id, manifest.accountKey, fingerprint(["application", manifest.accountKey, manifest.jobId, manifest.term]), hash, "application", async ledger => {
-        const receipt = await this.options.gateway.submitApplication(structuredClone(manifest), cloneFiles(draft.files), () => ledger.transition(id, "submitting"), structuredClone(staged), id);
+        const receipt = await this.options.gateway.submitApplication(structuredClone(manifest), cloneFiles(draft.files), () => ledger.transition(id, "submitting"), structuredClone(staged), id, draft.approval);
         if (ledger.get(id)?.state !== "submitting" || receipt.manifestHash !== hash || receipt.jobId !== manifest.jobId || (manifest.executionMode === "fill_only" ? receipt.status !== "form_filled" || receipt.applicationId !== "" : receipt.status !== "submitted" || !receipt.applicationId)) throw new Error("Submission receipt could not be verified");
         ledger.transition(id, "succeeded", receipt.applicationId || undefined); draft.files.clear();
         return { applicationId: receipt.applicationId, jobId: receipt.jobId, status: receipt.status, manifestHash: hash, externalSteps: [...receipt.externalSteps] };
@@ -141,7 +148,27 @@ export class ApplicationWorkflow {
     });
   }
 
-  async uploadDocument(typeId: string, name: string, filePath: string): Promise<CreatedReview> {
+  /**
+   * Called on a human Apply click before uploading. A document that already has this
+   * name is reused, because its upload may have landed without being recorded. When it
+   * is verifiably absent, an old finished attempt no longer locks the upload.
+   */
+  async recoverUpload(typeId: string, name: string, sha256: string): Promise<LibraryDocument | undefined> {
+    const { accountKey } = await this.options.gateway.getAccount();
+    const matches = (await this.options.gateway.listDocuments()).filter(doc => doc.name === name && doc.typeId === typeId && doc.source === "library");
+    if (matches.length > 1) throw new Error("Several library documents match this upload; remove the duplicates in WaterlooWorks");
+    if (matches[0]) {
+      if (matches[0].state !== "ready") throw new Error("An earlier upload of this document is not ready yet; try again shortly");
+      return matches[0];
+    }
+    const ledger = this.getLedger();
+    const operationKey = fingerprint(["upload", accountKey, typeId, name, sha256]);
+    const attempt = ledger.findOperation(operationKey);
+    if (attempt) ledger.authorizeUploadRetry(attempt.attemptId, attempt.updatedAt, { accountKey, operationKey, checkedAt: Date.now() });
+    return undefined;
+  }
+
+  async uploadDocument(typeId: string, name: string, filePath: string, approval?: string): Promise<CreatedReview> {
     this.requireCapability("upload");
     if (!/^\d+$/.test(typeId) || !name.trim() || name.length > 255 || /[\x00-\x1f]/.test(name)) throw new Error("Invalid document type or name");
     const file = await readApplicationPdf(filePath, this.options.documentRoots);
@@ -158,7 +185,7 @@ export class ApplicationWorkflow {
       },
       execute: () => this.execute(id, account.accountKey, fingerprint(["upload", account.accountKey, typeId, name, file.sha256]), hash, "upload_document", async ledger => {
         ledger.transition(id, "submitting");
-        const document = await this.options.gateway.uploadDocument(typeId, name, { ...file, bytes: new Uint8Array(file.bytes) }, account.accountKey, id);
+        const document = await this.options.gateway.uploadDocument(typeId, name, { ...file, bytes: new Uint8Array(file.bytes) }, account.accountKey, id, approval);
         if (document.typeId !== typeId || document.state !== "ready" || document.name !== name || (!this.options.gateway.getDocumentSnapshot && document.revision !== file.sha256)) throw new Error("Uploaded document could not be verified");
         if (this.options.gateway.getDocumentSnapshot) {
           const captured = await this.options.gateway.getDocumentSnapshot(document.id);
@@ -176,38 +203,6 @@ export class ApplicationWorkflow {
         ledger.transition(id, "succeeded", document.id);
         file.bytes.fill(0);
         return { id: document.id, typeId: document.typeId, name: document.name, revision: document.revision, state: document.state, source: document.source };
-      }),
-    });
-  }
-
-  async setDefaultDocuments(typeId: string, documentIds: string[]): Promise<CreatedReview> {
-    this.requireCapability("defaults");
-    if (!/^\d+$/.test(typeId) || !documentIds.length || new Set(documentIds).size !== documentIds.length) throw new Error("Invalid default document selection");
-    const account = await this.options.gateway.getAccount();
-    const select = async () => {
-      const docs = await this.options.gateway.listDocuments();
-      return Promise.all(documentIds.map(id => {
-        const doc = docs.find(item => item.id === id && item.typeId === typeId && item.state === "ready" && item.source === "library");
-        if (!doc) throw new Error("Selected default document is not available");
-        return this.options.gateway.getDocument ? this.options.gateway.getDocument(doc.id) : doc;
-      }));
-    };
-    const documents = await select();
-    const manifest = { kind: "set_default_documents", ...account, typeId, documents };
-    const hash = fingerprint(manifest);
-    const id = randomUUID();
-    return this.reviews.createReview({
-      id, manifest: json(manifest), manifestHash: hash, actionLabel: "Approve default change",
-      revalidate: async () => {
-        await this.checkAccount(account.accountKey);
-        if (fingerprint(await select()) !== fingerprint(documents)) throw new Error("Default selection changed");
-      },
-      execute: () => this.execute(id, account.accountKey, fingerprint(["defaults", account.accountKey, id]), hash, "set_default_documents", async ledger => {
-        ledger.transition(id, "submitting");
-        const result = await this.options.gateway.setDefaultDocuments(typeId, [...documentIds], account.accountKey);
-        if (fingerprint(result.documentIds) !== fingerprint(documentIds)) throw new Error("Defaults could not be verified");
-        ledger.transition(id, "succeeded");
-        return { documentIds: [...result.documentIds] };
       }),
     });
   }
@@ -346,10 +341,14 @@ export class ApplicationWorkflow {
   }
 
   private prune(): void {
-    for (const [id, draft] of this.drafts) if (draft.expiresAt <= Date.now() && (!draft.review || this.reviews.getStatus(draft.review.operationId)?.status !== "executing")) this.drafts.delete(id);
+    for (const [id, draft] of this.drafts) {
+      const status = (draft.continuation ?? draft.review) && this.reviews.getStatus((draft.continuation ?? draft.review)!.operationId)?.status;
+      if (status && FINISHED.has(status)) this.drafts.delete(id);
+      else if (draft.expiresAt <= Date.now() && (!draft.review || status !== "executing")) this.drafts.delete(id);
+    }
   }
 
-  private requireCapability(kind: "submit" | "upload" | "defaults") {
+  private requireCapability(kind: "submit" | "upload") {
     if (!this.options.gateway.capabilities[kind]) throw new Error(this.options.gateway.capabilities.reason ?? "This operation has no verified WaterlooWorks protocol");
   }
 }

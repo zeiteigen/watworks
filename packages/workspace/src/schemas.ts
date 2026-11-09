@@ -37,7 +37,7 @@ export const ProfileSchema = z.object({
     minHourlyPay: z.number().positive().optional(),
     avoid: z.array(line).default([]).describe("Employers or keywords to skip"),
     notes: z.string().max(2000).optional(),
-  }).strict().default({}),
+  }).strict().prefault({}),
   /** Reusable answers to common pre-screening questions; never invented by agents. */
   standardAnswers: z.array(z.object({ question: z.string().trim().min(1).max(1000), answer: z.string().trim().min(1).max(5000) }).strict()).max(100).default([]),
 }).strict();
@@ -118,7 +118,7 @@ export type JobSummary = z.infer<typeof JobSummarySchema>;
 export const StoredPostingSchema = z.object({
   savedAt: z.string(),
   summary: JobSummarySchema,
-  posting: z.record(z.unknown()),
+  posting: z.record(z.string(), z.unknown()),
 }).strict();
 export type StoredPosting = z.infer<typeof StoredPostingSchema>;
 
@@ -156,7 +156,7 @@ export type JobStatus = z.infer<typeof JobStatusSchema>;
 export const SearchRecordSchema = z.object({
   at: z.string(),
   source: slug,
-  query: z.object({ keyword: z.string().optional(), filters: z.record(z.unknown()).nullable().optional() }).strict(),
+  query: z.object({ keyword: z.string().optional(), filters: z.record(z.string(), z.unknown()).nullable().optional() }).strict(),
   total: z.number().int().nonnegative(),
   results: z.array(JobSummarySchema),
 }).strict();

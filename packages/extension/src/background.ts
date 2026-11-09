@@ -1,7 +1,10 @@
 import { getSubmissionStatus, markSubmissionSessionDirty, prepareSubmissionSession } from "./submission-client.js";
 import { refreshDueDiscovery } from "./discovery-session.js";
+import { refreshHostedDemand } from './hosted-demand.js';
+import { prepareHostedSubmissionSession } from './hosted-session.js';
+import { getHostedAccount } from './insider-account.js';
 import { startService } from "./start-service.js";
-import { openApplicationForm } from "./open-application-form.js";
+import { openApplicationForm, openPosting } from "./open-application-form.js";
 import { diagnosticTabs, inspectTab } from "./tab-inspection.js";
 import { EXTENSION_BUILD } from "./build-info.js";
 import { WATERLOOWORKS_ORIGIN } from "../../shared/src/protocol.js";
@@ -11,7 +14,9 @@ import { policyGet, policySave } from "./discovery-policy.js";
 import { connect, serviceConnected } from "./connection.js";
 import { browserResearch } from "./research.js";
 import { handlePageMessage } from "./page-messages.js";
+import { mintWriteApproval } from "./write-approval.js";
 import { clearSignInEpisode, isSignInTab, continueRecognizedSignIn, ensureSignIn } from "./signin.js";
+import { clearChatGptAttemptForClosedTab, observeChatGptTab, startChatGptSignIn } from "./chatgpt-signin.js";
 
 chrome.runtime.onMessage.addListener((message: unknown, sender, reply) => {
   const pageTask = handlePageMessage(message, sender);
@@ -20,20 +25,26 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, reply) => {
     return true;
   }
   if (sender.id !== chrome.runtime.id || !sender.url?.startsWith(chrome.runtime.getURL(""))) return false;
-  const input = message as { type?: string; policy?: unknown; tabId?: unknown; includeHtml?: unknown; jobId?: unknown };
+  const input = message as { type?: string; policy?: unknown; tabId?: unknown; includeHtml?: unknown; jobId?: unknown; action?: unknown; target?: unknown };
   const task = async () => {
+    if (input.type === "mintWriteApproval") return mintWriteApproval(input.action, input.target);
     if (input.type === "openApplicationForm") return openApplicationForm(input.jobId, reads);
+    if (input.type === "openPosting") return openPosting(input.jobId);
     if(input.type === "debugListTabs")return diagnosticTabs();
     if(input.type === "debugInspectTab")return {extensionBuild:EXTENSION_BUILD,...await inspectTab(input.tabId,input.includeHtml)};
-    if (input.type === "startService") { await startService(); connect(); return { started: true }; }
+    if (input.type === "startService") { await startService(); await chrome.storage.local.set({"workspace:local-mode":true}); connect(); return { started: true }; }
     if (input.type === "signIn") {
       await chrome.storage.session.remove("signin:episode-opened");
       await ensureSignIn();
       return { ok: true };
     }
+    if (input.type === "chatgptSignIn") return startChatGptSignIn();
+    if (input.type === "chatgptSignInComplete") return { received: true };
     if (input.type === "listApplications") return executeCommand("listApplications",[],Date.now()+30_000);
     if (input.type === "getSubmissionStatus") return getSubmissionStatus();
+    if (input.type === "getHostedAccount") return getHostedAccount();
     if (input.type === "prepareSubmissionSession") return prepareSubmissionSession();
+    if (input.type === "prepareHostedSubmissionSession") { await prepareHostedSubmissionSession(); return { prepared: true }; }
     if (input.type === "status") return { ...await browserResearch.health(), serviceConnected: serviceConnected() };
     if (input.type === "checkNow") return daily(true);
     if (input.type === "discoveryPolicyGet") return policyGet();
@@ -47,28 +58,36 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, reply) => {
 });
 
 async function lifecycle() {
-  connect();
+  const local=(await chrome.storage.local.get("workspace:local-mode"))["workspace:local-mode"]===true;
+  if(local)connect();
   await chrome.alarms.create("workspace-reconnect", { periodInMinutes: 1 });
   await chrome.alarms.clear("daily-discovery");
   await chrome.alarms.clear("submission-session-refresh");
   await chrome.alarms.create("discovery-session-demand", { periodInMinutes: 1 });
-  void refreshDueDiscovery().catch(() => undefined);
+  if(local)void refreshDueDiscovery().catch(() => undefined);
+  else void refreshHostedDemand().catch(()=>undefined);
 }
 
 chrome.runtime.onStartup.addListener(() => { void lifecycle(); });
 chrome.runtime.onInstalled.addListener(() => { void lifecycle(); });
 chrome.alarms.onAlarm.addListener(alarm => {
-  if (alarm.name === "workspace-reconnect") connect();
-  if (alarm.name === "discovery-session-demand") void refreshDueDiscovery().catch(() => undefined);
+  void chrome.storage.local.get("workspace:local-mode").then(settings=>{
+    if(settings["workspace:local-mode"]!==true){if(alarm.name==='discovery-session-demand')void refreshHostedDemand().catch(()=>undefined);return;}
+    if (alarm.name === "workspace-reconnect") connect();
+    if (alarm.name === "discovery-session-demand") void refreshDueDiscovery().catch(() => undefined);
+  });
 });
 chrome.notifications.onClicked.addListener(() => { void chrome.tabs.create({ url: chrome.runtime.getURL("inbox.html") }); });
 chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
+  void observeChatGptTab(tabId, change.url ?? tab.url).catch(() => undefined);
   if (change.status !== "complete" || !tab.url) return;
   const url = new URL(tab.url);
   if (url.origin === WATERLOOWORKS_ORIGIN) {
     void browserResearch.health().then(async health => {
       if (health.authenticated) {
         await clearSignInEpisode();
+        // An open workspace page connects itself; no receiver just means none is open.
+        await chrome.runtime.sendMessage({ type: "waterlooWorksSignedIn" }).catch(() => undefined);
       }
     });
   }
@@ -79,6 +98,7 @@ chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
       .catch(() => undefined);
   }
 });
+chrome.tabs.onRemoved.addListener(tabId => { void clearChatGptAttemptForClosedTab(tabId).catch(() => undefined); });
 
 void lifecycle();
 

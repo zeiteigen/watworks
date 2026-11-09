@@ -17,6 +17,9 @@ export function dataRoot(): string {
 const SLUG = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const JOB_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
+export function isSlug(value: string): boolean { return SLUG.test(value); }
+export function isJobId(value: string): boolean { return JOB_ID.test(value); }
+
 export function assertSlug(value: string, label = "identifier"): string {
   if (!SLUG.test(value)) throw new Error(`Invalid ${label}: use lowercase letters, digits, and hyphens`);
   return value;

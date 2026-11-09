@@ -4,6 +4,15 @@ export const WORKSPACE_OFFLINE = "Workspace service is offline. Click Start work
 
 type Send = (message: Record<string, unknown>) => Promise<{ ok: boolean; value?: any; error?: string }>;
 
+/** Ask the background worker for a click-scoped approval; only extension pages can do this. */
+export function createWriteApprovalMinter(send: Send) {
+  return async (action: string, target: string): Promise<string> => {
+    const reply = await send({ type: "mintWriteApproval", action, target });
+    if (!reply?.ok || typeof reply.value?.token !== "string") throw new Error(reply?.error ?? "The extension could not approve this action");
+    return reply.value.token;
+  };
+}
+
 export function createDashboardRequest(send: Send, request: (url: string, init?: RequestInit) => Promise<Response> = fetch) {
   const native = async (type: string, extra = {}) => {
     const reply = await send({ type, ...extra });

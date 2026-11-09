@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { WorkspacePaths, installRoot } from "../../workspace/src/paths.js";
 import { NATIVE_HOST_NAME, NATIVE_HOST_ORIGIN } from "../../shared/src/native-host.js";
+import { attemptLedgerPath } from "../../application-workflow/src/config.js";
 
 const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
 
@@ -12,6 +13,11 @@ export function nativeHostDirectories(home: string, platform = process.platform)
   return [];
 }
 
+/** Chrome does not inherit the agent's environment, so pin what must stay shared across launchers. */
+export function nativeHostWrapper(options: { dataRoot: string; port: string; ledgerPath: string; command: string[]; documentRoots?: string | undefined }): string {
+  return `#!/bin/sh\nexport WAT_DATA_DIR=${quote(options.dataRoot)}\nexport WAT_DASHBOARD_PORT=${quote(options.port)}\nexport WATERLOOWORKS_LEDGER_PATH=${quote(options.ledgerPath)}\n${options.documentRoots ? `export WATERLOOWORKS_DOCUMENT_ROOTS=${quote(options.documentRoots)}\n` : ""}exec ${options.command.map(quote).join(" ")} --native-host "$@"\n`;
+}
+
 /** Per-user registration; absolute paths also work when Chrome has no Bun on PATH. */
 export async function installNativeHost(): Promise<string[]> {
   const root = installRoot();
@@ -19,11 +25,10 @@ export async function installNativeHost(): Promise<string[]> {
   const directory = join(root, ".tools", "native-host");
   await mkdir(directory, { recursive: true });
   let executable = process.execPath;
-  if (!Bun.isStandaloneExecutable) {
+  if (process.platform !== "win32") {
     executable = join(directory, "workspace-host");
-    // Pin the workspace root; Chrome does not inherit the agent's environment.
-    const data = new WorkspacePaths();
-    await writeFile(executable, `#!/bin/sh\nexport WAT_DATA_DIR=${quote(data.root)}\nexport WAT_DASHBOARD_PORT=${quote(process.env.WAT_DASHBOARD_PORT ?? "39452")}\nexec ${quote(process.execPath)} ${quote(join(root, "packages/mcp-server/src/cli.ts"))} --native-host "$@"\n`, { mode: 0o700 });
+    const command = Bun.isStandaloneExecutable ? [process.execPath] : [process.execPath, join(root, "packages/mcp-server/src/cli.ts")];
+    await writeFile(executable, nativeHostWrapper({ dataRoot: new WorkspacePaths().root, port: process.env.WAT_DASHBOARD_PORT ?? "39452", ledgerPath: attemptLedgerPath(), command, documentRoots: process.env.WATERLOOWORKS_DOCUMENT_ROOTS }), { mode: 0o700 });
     await chmod(executable, 0o700);
   }
   const manifest = JSON.stringify({ name: NATIVE_HOST_NAME, description: "Start the WaterlooWorks workspace service", path: executable, type: "stdio", allowed_origins: [NATIVE_HOST_ORIGIN] }, null, 2) + "\n";
