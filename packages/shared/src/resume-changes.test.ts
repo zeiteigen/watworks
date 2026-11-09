@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { applyResumeChanges, changeLocation, resumeLines, reviewUnits, wordDiff, type ResumeChange } from "./resume-changes.js";
+import { applyResumeChanges, changeLocation, markupLink, normalizeReviewMode, resumeLines, reviewUnit, reviewUnits, wordDiff, type ResumeChange } from "./resume-changes.js";
 import type { ResumeDocument } from "../../workspace/src/schemas.js";
 
 const base: ResumeDocument = {
@@ -54,4 +54,15 @@ test("adjacent replaced words form one hunk", () => {
 test("removing every entry of a section drops the section", () => {
   const result = applyResumeChanges(base, [{ id: "r", kind: "remove", target: "s1.e0", before: "Fraise" }], ["r"]);
   expect(result.sections.map(section => section.title)).toEqual(["Experience", "Technical Skills"]);
+});
+
+test("review links name a hunk, and line review toggles its whole change", () => {
+  expect(markupLink("https://watworks.invalid/d/c3.w1")).toEqual({ side: "del", hunk: "c3.w1" });
+  expect(markupLink("https://watworks.invalid/i/c12")).toEqual({ side: "ins", hunk: "c12" });
+  expect(markupLink("https://example.com/i/c1")).toBeNull();
+  expect(markupLink("https://watworks.invalid/i/c1;x")).toBeNull();
+  expect(reviewUnit("c3.w1", "line")).toBe("c3");
+  expect(reviewUnit("c3.w1", "word")).toBe("c3.w1");
+  expect(normalizeReviewMode("whole")).toBe("line");
+  expect(normalizeReviewMode("word")).toBe("word");
 });

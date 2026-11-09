@@ -1,0 +1,361 @@
+<div id="preScreenQuestions" class="js--ui-wizard-step wizard-step position--absolute" data-additional-step-validation="validatePreScreenQuestions()" data-display-condition="" data-allow-skip="false" data-status="incomplete" data-ajax="">
+<legend class="h1 wizard-form__section-fieldset__title">
+<span class="wizard-form__section__ordinal display--none"></span>
+<span class="js--step-title">Pre-Screening Questions</span>
+</legend>
+<div class="js--ui-wizard-step-container">
+<style>
+.error--tooltip {
+top: -35px;
+}
+</style>
+<input type="hidden" name="isSpiralRobot" value="true" />
+<div class="df83167_ dfForm" >
+<div id="grid_7430592095462519" class="grd     wrap align--start align--middle " style="" >
+<div id="gridCol_0771730059828265" class="  grd__col--12  " style="">
+<div id="panel_314003221914787" class="plain panel" style="padding-top: 16px; ">
+<div id="dfCatQuestions_69621_" class="boxContent form-horizontal">
+<div>
+<div class="js--question--container" id="111489_">
+<script type="text/javascript">
+$(document).ready(function(){
+var choices = ["Yes","No"];
+choices.forEach(splitter);
+function splitter(item, index)
+{
+var split = item.split("|")[0];
+choices[index]=split;
+}
+$("select#question_111489_").change(function(){
+if($("select#question_111489_ option:selected").text().trim() == "Other")
+{
+$("input#other_111489_").val($("option#dropdownOther_111489_").attr("value"));
+$("input#other_111489_").parent().parent().removeClass('display--none');
+$("input#other_111489_").show().animate({ backgroundColor: "yellow" }, "medium").animate({ backgroundColor: "white" }, "medium").focus();
+$(this).removeClass("required");
+}
+else
+{
+$("input#other_111489_").val(null);
+$("input#other_111489_").parent().parent().addClass('display--none');
+$("input#other_111489_").hide();
+$(this).addClass("required");
+}
+});
+$("input#other_111489_").change(function(){
+if($.inArray($(this).val(), choices) != -1)
+{
+$("select#question_111489_").val($(this).val());
+$(this).val(null);
+$("option#dropdownOther_111489_").val(null);
+$("input#other_111489_").parent().parent().addClass('display--none');
+$("input#other_111489_").hide();
+$("input#other_111489_").val(null);
+$("input#other_111489_").addClass("do-not-validate-field");
+$("select#question_111489_").removeClass("do-not-validate-field");
+}
+else
+{
+$("option#dropdownOther_111489_").val($(this).val());
+}
+});
+$.validator.addMethod("select_question_111489_", function () {
+var selected = $("select#question_111489_ option:selected").text().trim();
+var otherQuestion = $("#other_111489_");
+return (selected === "Other" && (otherQuestion.val() != null && otherQuestion.val().trim() !== ''))
+|| (selected !== "Select" && selected !== "Other");
+}, 'Please supply value of Other');
+});
+</script>
+<div style="position: relative;">
+<div class="js--error-placement">
+<label class="label  " style="">
+Have you worked with large data sets in the past?*
+</label>
+<div class="select  margin--b--xxl " style="">
+<select id="question_111489_" name="question_111489" size="1" onchange="" class="js--ui-select sel_TestValidationStatus required  select_question_111489_"   >
+<option class="emptyOption" value="">Select</option>
+<option
+id="selectItem_4625925226588843"
+class=""
+aria-label=""
+value="Yes"
+>
+Yes
+</option>
+<option
+id="selectItem_2743664851092473"
+class=""
+aria-label=""
+value="No"
+>
+No
+</option>
+<option
+id="dropdownOther_111489_"
+class="other_111489"
+aria-label=""
+value=""
+>
+Other
+</option>
+</select>
+<div class="select__arrow "></div>
+<p class="text--help " style=""></p>
+</div>
+<script type="text/javascript">
+$('#question_111489_').uiSelect({});
+</script>
+</div>
+</div>
+<div id="" class="input__group margin--b--xxxl display--none" style="">
+<label class="label  " for="other_111489"  style="">
+Other
+</label>
+<div class="display--flex" style="align-items: center">
+<input class="input--box display--block  " style="" data-rule-maxlength="255" type="text" name="other_111489" id="other_111489_" value="" onkeydown="" onclick=""    ondblclick="" onfocus=""    placeholder=""/>
+</div>
+<p class="text--help"></p>
+</div>
+</div>
+</div>
+<div>
+<div class="js--question--container" id="111490_">
+<script type="text/javascript">
+if(!orbisAppSr.lastValidSelection)
+{
+orbisAppSr.lastValidSelection = new Object();
+}
+$(document).ready(function() {
+if(!orbisAppSr.lastValidSelection["question_111490_"])
+{
+orbisAppSr.lastValidSelection["question_111490_"] = null;
+}
+var choices = ["No - I can provide financial, background/birth certificates, and criminal checks as needed.","Yes - I cannot provide the needed documentation or foresee issues.","Unsure"];
+var controllerPath = "/myAccount/co-op/full/jobs.htm";
+var selectedChoices = [];
+var limitAnswer = 0;
+$.validator.addMethod("question_111490_", function () {
+var otherQuestion = $(".question_111490_other");
+var otherText = $('input[name="other_111490"]').val();
+return !otherQuestion.is(":checked")
+|| (otherQuestion.is(":checked") && otherText != null && otherText.trim() !== '');
+}, 'This field is required');
+$("#question_111490_").change(function(){
+if(limitAnswer != 0 & $("input.question_111490_:checked").length > limitAnswer)
+{
+var notThese = "";
+if(orbisAppSr.lastValidSelection["question_111490_"] != null)
+{
+for(var i = 0; i < orbisAppSr.lastValidSelection["question_111490_"].length; i++)
+{
+notThese += "[value='" + orbisAppSr.lastValidSelection["question_111490_"][i] + "']";
+}
+}
+notThese = notThese.replace(/\]\[/g, "],[");
+$("input.question_111490_:checked").not(notThese).prop("checked", false);
+}
+orbisAppSr.lastValidSelection["question_111490_"] = new Array();
+$("input.question_111490_:checked").each(function(){
+orbisAppSr.lastValidSelection["question_111490_"].push($(this).val());
+});
+});
+for (var i = 0; i < selectedChoices.length; i++)
+{
+if($.trim(selectedChoices[i]) != "" && $("input.question_111490_[value='" + selectedChoices[i] + "']").length > 0)
+{
+$("input.question_111490_[value='" + selectedChoices[i] + "']").prop("checked", true);
+}
+else
+{
+$("input#other_111490_").removeAttr("readonly").val(selectedChoices[i]);
+$("input#otherCheckbox_111490_").prop("checked", true).val(selectedChoices[i]);
+}
+}
+});
+</script>
+<div class="position--relative">
+<div id="question_111490_" class="ui__checkbox--group margin--t--l js__checkbox-group js--error-placement  " style="">
+<fieldset>
+<legend class="h4 ui__checkbox--group__title">
+<span class="">Do you foresee any issues with obtaining security clearance if needed? (See Responsibilities Section for further details).*</span>
+</legend>
+<div class="ui__checkbox--group__body js__checkbox--group__body">
+<div class="ui__checkbox--group__body__empty--state label label--p display--none js__empty--state">
+Your filter doesn't match any of the options
+</div>
+<label id="checkboxGroupItem_13411094183710182" class="ui__toggle display--flex flex--column ui__checkbox--group--item js__checkbox--group--item " style="">
+<p class="label label--p margin--t--none margin--b--s js__toggle--label">
+No - I can provide financial, background/birth certificates, and criminal checks as needed.
+</p>
+<input
+type="checkbox"
+class="question_111490_"
+name="question_111490"
+value="No - I can provide financial, background/birth certificates, and criminal checks as needed."
+/>
+<span class="toggle"></span>
+</label>
+<label id="checkboxGroupItem_06721138464207077" class="ui__toggle display--flex flex--column ui__checkbox--group--item js__checkbox--group--item " style="">
+<p class="label label--p margin--t--none margin--b--s js__toggle--label">
+Yes - I cannot provide the needed documentation or foresee issues.
+</p>
+<input
+type="checkbox"
+class="question_111490_"
+name="question_111490"
+value="Yes - I cannot provide the needed documentation or foresee issues."
+/>
+<span class="toggle"></span>
+</label>
+<label id="checkboxGroupItem_20896780727412434" class="ui__toggle display--flex flex--column ui__checkbox--group--item js__checkbox--group--item " style="">
+<p class="label label--p margin--t--none margin--b--s js__toggle--label">
+Unsure
+</p>
+<input
+type="checkbox"
+class="question_111490_"
+name="question_111490"
+value="Unsure"
+/>
+<span class="toggle"></span>
+</label>
+</div>
+<hr />
+<div class="ui__checkbox--group__footer">
+<div class="checked--count font--12 ">
+<span class="js__selected--count"></span> of <span class="js__visible--count"></span>
+<span class="js__is--filtered display--none">
+( filtered )
+</span>
+</div>
+<label id="toggle_8224934822186032" class="ui__toggle display--flex flex--column ui__checkbox--group__select--all js__select--all" style="">
+<p class="label label--p margin--t--none margin--b--s js__toggle--label">
+All
+<span class="js__is--filtered display--none">
+(<span class="js__visible--count"></span>)
+</span>
+</p>
+<input
+type="checkbox"
+class=""
+name=""
+/>
+<span class="toggle"></span>
+</label>
+</div>
+</fieldset>
+</div>
+</div>
+<p class="text--help"></p>
+<script type="text/javascript">
+$("#question_111490_").uiCheckboxGroup({
+validation: {'required':true}
+});
+</script>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<script type="text/javascript">
+$(".js--category--container").each(function(){
+if($(this).find(".js--question--container").length == 0)
+{
+$(this).remove();
+}
+});
+</script>
+<script type="text/javascript">
+var keysToIgnore = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "Insert", "CapsLock", "Control", "Alt", "Shift"];
+$(function() {
+$(document).on('change', '.df83167_ select.leader', function(){
+var el = this;
+var inputId = el.id;
+var focused = el == document.activeElement;
+reload_form83167(null, function(){
+el = $("#" + inputId);
+var selectedOption = $(el).children('option:selected')[0];
+if (selectedOption.id && selectedOption.id.startsWith('dropdownOther_')) {
+var $otherText = $("#o" + selectedOption.id.slice(9));
+if (selectedOption.value == 'Other') {
+selectedOption.value = '';
+$otherText.val('');
+}
+$otherText.focus();
+} else if (focused) {
+$(el).focus();
+}
+});
+});
+$(document).on('keyup', '.df83167_ input.leader[type=text]', function(){
+if(!keysToIgnore.includes(event.key))
+{
+var curVal = $(this).val();
+var el = this;
+window.setTimeout(function(){
+if (el.value == curVal){
+var inputId = el.id;
+var focused = el == document.activeElement;
+var selectionStart = focused ? el.selectionStart : null;
+var selectionEnd = focused ? el.selectionEnd : null;
+if (focused) {
+reload_form83167(null, function(){
+el = $("#" + inputId).focus()[0];
+el.selectionStart = selectionStart;
+el.selectionEnd = selectionEnd;
+if (!curVal) {
+el.value = '';
+}
+});
+} else {
+reload_form83167();
+}
+}
+}, 1000);
+}
+});
+$(document).on('click', '.df83167_ input.leader[type=radio]', function(){reload_form83167()});
+$(document).on('click', '.df83167_ input.leader[type=checkbox]', function(){reload_form83167()});
+$(document).on('groupChanged', '.df83167_ .toggle-group.leader', function(){reload_form83167()});
+});
+$(window).on("load", function(){
+var $form = $('[id^=question_]').closest('form');
+$form.trigger("dfFormLoadStop");
+});
+function reload_form83167(resetForEmptyString, callback) {
+var $form = $('[id^=question_]').closest('form');
+$form.trigger("dfFormLoadStart");
+var request = $form.serializeFormToObject();
+request.action = 'fake-reload-operation';
+request.modelId = '83167';
+request.confirmationCode = '';
+request.recordId = '';
+request.resetForEmptyString = resetForEmptyString;
+request.key = '';
+request.showDFForm2 = '';
+request.showDFForm3 = '';
+request.dfRenderInBox = '';
+request.dfShowCategories = 'true';
+request.showQuestionCheckboxes = false;
+request.forceSpiralRobot = 'true';
+for(key in request) {
+if(key.startsWith('dfh_')) {
+request[key.replace('dfh_', '')] = request[key];
+delete request[key];
+}
+}
+if (!callback) {
+callback = function() {};
+}
+// 			$('.df83167_').empty();
+$('.df83167_').load('/myAccount/co-op/full/jobs.htm', request, function(){
+$form.trigger("dfFormLoadStop");
+callback.apply(this, arguments);
+});
+}
+</script>
+</div>
+</div>
+</div>

@@ -37,7 +37,7 @@
         <div class="actions"><button type="button" class="secondary" data-prompt-default="letterPrompt" disabled>Restore the default cover letter prompt</button></div>
         <label>Custom resume prompt <span class="hint">Used when you choose “Send with custom resume” on a job. It tailors one of your resumes above</span><textarea name="resumePrompt" rows="12" maxlength="20000" spellcheck="true"></textarea></label>
         <div class="actions"><button type="button" class="secondary" data-prompt-default="resumePrompt" disabled>Restore the default resume prompt</button></div>
-        <label>Review custom resume changes<select name="resumeReview"><option value="whole">All at once: approve the whole tailored resume</option><option value="line">Line by line: keep or drop each changed line</option><option value="word">Word by word: keep or drop each edited phrase</option></select></label>
+        <label>Keep or drop custom resume changes<select name="resumeReview"><option value="line">Line by line: each changed line is one choice</option><option value="word">Word by word: each edited phrase is its own choice</option></select></label>
         <p id="prompt-settings-state" class="meta" role="status"></p><div class="actions"><button type="submit" disabled>Save writing prompts</button></div>
       </form></section></section>
   <section id="settings-panel" data-workspace-panel="settings" aria-label="Settings" hidden>

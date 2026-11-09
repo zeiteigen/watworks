@@ -25,7 +25,7 @@ export interface HostedAi {
   apiKey?: { style: "openai" | "anthropic"; model: string; baseUrl: string | null; keyHint: string | null } | null;
 }
 export interface HostedResume { id: string; name: string; size: number }
-export interface HostedWorkspace { profile: HostedProfile | null; resumes: HostedResume[]; runs: Array<{ status?: string; [key: string]: unknown }>; jobs: import("./hosted-queue.js").HostedJob[]; ai: HostedAi; resumeReview?: import("../../shared/src/resume-changes.js").ResumeReviewMode }
+export interface HostedWorkspace { profile: HostedProfile | null; resumes: HostedResume[]; runs: Array<{ status?: string; [key: string]: unknown }>; jobs: import("./hosted-queue.js").HostedJob[]; ai: HostedAi; resumeReview?: string }
 
 /** The server answered without running the action, or the request was never sent. A retry cannot repeat a write. */
 export class HostedRejection extends Error {
@@ -48,7 +48,7 @@ export async function hostedRequest<T>(path = "", init: RequestInit = {}): Promi
     ...init,
     headers: { "content-type": "application/json", authorization: `Bearer ${session.token}`, ...init.headers },
     credentials: "omit", redirect: "error", cache: "no-store", referrerPolicy: "no-referrer",
-    signal: AbortSignal.timeout(/^\/jobs\/\d+\/(prepare|confirm|custom-resume\/choices)$/.test(path) ? 420_000 : path === "/ai-key" ? 45_000 : 30_000), // The key check itself may take the server 30 seconds.
+    signal: AbortSignal.timeout(/^\/jobs\/\d+\/(prepare|confirm|custom-resume\/choices|custom-resume\?markup=1)$/.test(path) ? 420_000 : path === "/ai-key" ? 45_000 : 30_000), // The key check itself may take the server 30 seconds.
   });
   if (response.ok && ["application/pdf", "application/x-tex"].some(type => response.headers.get("content-type")?.toLowerCase().startsWith(type))) return await response.blob() as T;
   const data = await response.json().catch(() => ({})) as { error?: string };

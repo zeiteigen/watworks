@@ -118,3 +118,37 @@ button.word-hunk:hover ins, button.word-hunk:hover del { outline: 1px solid var(
 .word-hunk.rejected del { background: none; color: var(--chalk); text-decoration: none; }
 .word-hunk.rejected ins { background: none; color: var(--faint); outline: 1px dashed var(--rail); outline-offset: -1px; }
 .change-off .change-text { opacity: 0.55; }
+.change-number { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: var(--rail); color: var(--chalk); font-size: 11px; }
+.resume-change.focus { background: rgb(255 255 255 / 0.04); }
+/* Review of a custom resume: the marked-up PDF beside its change list. */
+.job-dialog.wide { width: min(1320px, calc(100vw - 32px)); }
+.review-tabs { display: flex; gap: 8px; margin: 16px 0 8px; }
+.review-tabs button { font-size: 12px; }
+.review-tabs button[aria-pressed="true"] { border-color: var(--bone); color: var(--bone); }
+.review-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 4px 0 12px; }
+.review-legend span::before { content: ""; display: inline-block; width: 12px; height: 12px; margin-right: 6px; vertical-align: -2px; border-radius: 2px; }
+.legend-ins::before { background: rgb(22 163 74 / 0.35); border-bottom: 2px solid #16a34a; }
+.legend-del::before { background: linear-gradient(transparent 45%, #b91c1c 45%, #b91c1c 60%, transparent 60%), rgb(185 28 28 / 0.12); }
+.legend-off::before { background: #fff; opacity: 0.35; outline: 1px dashed var(--faint); }
+.resume-review-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr); gap: 20px; align-items: start; }
+.pdf-review, .resume-review-list { max-height: calc(100vh - 340px); overflow: auto; }
+.pdf-review { display: grid; gap: 12px; padding-right: 4px; }
+.pdf-review[hidden] { display: none; }
+.resume-review-list .resume-changes { margin-top: 0; }
+.pdf-loading { padding: 24px 0; }
+.pdf-page { position: relative; width: 100%; background: #fff; box-shadow: 0 1px 6px rgb(0 0 0 / 0.5); }
+.pdf-page canvas { display: block; width: 100%; height: 100%; }
+.pdf-mark { position: absolute; margin: 0; padding: 0; border: 0; border-radius: 2px; background: transparent; cursor: pointer; font: inherit; }
+.pdf-mark:focus-visible, .pdf-mark.focus { outline: 2px solid #2563eb; outline-offset: 1px; z-index: 1; }
+.pdf-mark.ins.kept { background: rgb(22 163 74 / 0.16); box-shadow: inset 0 -2px #16a34a; }
+.pdf-mark.del.kept { background: rgb(255 255 255 / 0.62); }
+.pdf-mark.ins.dropped { background: rgb(255 255 255 / 0.72); outline: 1px dashed #9ca3af; outline-offset: -1px; }
+.pdf-mark.del.dropped { background: rgb(234 179 8 / 0.2); }
+.pdf-mark:hover { box-shadow: inset 0 0 0 1px #2563eb; }
+.pdf-badge { position: absolute; left: 1.2%; transform: translateY(-15%); min-width: 1.6em; padding: 0 3px; border-radius: 8px; background: #1f2937; color: #fff; font: 600 10px/1.5 system-ui, sans-serif; text-align: center; pointer-events: none; }
+.review-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--rule); }
+.review-footer p { margin: 0 auto 0 0; }
+@media (max-width: 900px) {
+  .resume-review-grid { grid-template-columns: 1fr; }
+  .pdf-review, .resume-review-list { max-height: none; overflow: visible; }
+}

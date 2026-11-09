@@ -23,7 +23,9 @@ test('word review toggles single edits and renders model text only as text',()=>
   hunk.click();expect(kept.has('c0.w0')).toBe(false);expect(changes).toBe(1);
   const removal=list.querySelectorAll('input[type=checkbox]')[1] as unknown as HTMLInputElement;
   removal.checked=false;removal.dispatchEvent(new (document.defaultView as unknown as typeof globalThis).Event('change'));expect(kept.has('c1')).toBe(false);
-  expect(renderResumeChanges(custom,'whole',kept,()=>{}).querySelector('input,button')).toBeNull();
+  // Line by line, every change still has its own keep box, but edits are not split.
+  const lines=renderResumeChanges(custom,'line',kept,()=>{});
+  expect(lines.querySelectorAll('input[type=checkbox]').length).toBe(2);expect(lines.querySelector('button')).toBeNull();
 }));
 
 test('custom resume offers the choice before approval and approves only the current PDF hash',()=>withDom(document=>{
@@ -34,7 +36,7 @@ test('custom resume offers the choice before approval and approves only the curr
   card.replaceChildren();
   let approved:string|undefined;
   appendCustomResume(card,{...job,status:'resume_review',customResume:custom},'line',()=>{},()=>{},async hash=>{approved=hash;},false);
-  expect(card.textContent).toContain('Review changes (2/2 kept)');
+  expect(card.textContent).toContain('Preview PDF with changes marked (2/2 kept)');
   const approve=[...card.querySelectorAll('[data-write]')].at(-1) as unknown as HTMLButtonElement;
   expect(approve.textContent).toBe('Approve custom resume and application uploads');
   approve.click();expect(approved).toBe('b'.repeat(64));

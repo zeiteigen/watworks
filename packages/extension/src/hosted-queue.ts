@@ -158,7 +158,7 @@ export function hostedJobPending(jobId: string): boolean { return pendingJobs.ha
 
 export function renderHostedQueue(
   container: HTMLElement, jobs: HostedJob[], resumes: HostedResume[], canLaunch: boolean,
-  onRefresh: () => void, report: StatusMessage, onProgress: () => void = () => {}, resumeReview: ResumeReviewMode = "whole",
+  onRefresh: () => void, report: StatusMessage, onProgress: () => void = () => {}, resumeReview: ResumeReviewMode = "line",
 ): void {
   container.replaceChildren();
   if (!jobs.length) {

@@ -31,6 +31,8 @@ export async function buildExtension(outdir = join(import.meta.dir, "../../dist/
   for (const font of ["caveat.ttf", "nunito-sans.ttf"]) {
     await Bun.write(join(outdir, "fonts", font), Bun.file(join(import.meta.dir, "../dashboard/assets", font)));
   }
+  // pdf.js renders resume previews in the hosted page; its worker must be a packaged file.
+  await Bun.write(join(outdir, "pdf.worker.min.mjs"), Bun.file(Bun.resolveSync("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.dir)));
   const manifest = await Bun.file(join(import.meta.dir, "manifest.json")).text();
   await Bun.write(join(outdir, "manifest.json"), manifest);
   console.error(`Built ${outdir}`);

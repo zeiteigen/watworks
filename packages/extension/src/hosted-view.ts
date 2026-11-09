@@ -1,6 +1,7 @@
 import type { HostedWorkspace } from "./hosted-client.js";
 import { renderHostedQueue } from "./hosted-queue.js";
 import { HOSTED_DIALOG_CLOSED } from "./hosted-dialog.js";
+import { normalizeReviewMode } from "../../shared/src/resume-changes.js";
 
 /** Notebook navigation and queue filters; execution remains in the hosted queue. */
 export interface HostedView { (workspace: HostedWorkspace): void; reveal(jobId: string): void; showNew(): void }
@@ -51,7 +52,7 @@ export function createHostedView(root: Document, refresh: () => void, report: (m
       [job.jobId, job.posting?.title, job.posting?.organization, job.posting?.employer].some(value => value?.toLowerCase().includes(term)));
     root.querySelector("#queue-count")!.textContent = `${jobs.length} ${jobs.length === 1 ? "job" : "jobs"}`;
     const container = activeTab === "submitted" ? submitted : activeTab === "applications" ? applications : queue;
-    if (jobs.length) renderHostedQueue(container, jobs, workspace.resumes, workspace.ai.available, refresh, report, () => selectTab("applications"), workspace.resumeReview ?? "whole");
+    if (jobs.length) renderHostedQueue(container, jobs, workspace.resumes, workspace.ai.available, refresh, report, () => selectTab("applications"), normalizeReviewMode(workspace.resumeReview));
     else {
       const empty = root.createElement("p"); empty.className = "empty";
       empty.textContent = activeTab === "submitted" ? "Successfully submitted applications will appear here." : activeTab === "applications" ? "No applications are in progress." :

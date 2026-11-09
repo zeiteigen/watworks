@@ -1,7 +1,7 @@
 import { hostedRequest } from "./hosted-client.js";
-import type { ResumeReviewMode } from "../../shared/src/resume-changes.js";
+import { normalizeReviewMode } from "../../shared/src/resume-changes.js";
 
-interface MaterialPreferences { letterPrompt: string; resumePrompt: string; resumeReview: ResumeReviewMode; defaultLetterPrompt: string; defaultResumePrompt: string }
+interface MaterialPreferences { letterPrompt: string; resumePrompt: string; resumeReview: string; defaultLetterPrompt: string; defaultResumePrompt: string }
 
 /** Writing prompts in Materials. Loaded apart from the queue so polling never replaces what is being edited. */
 export function createMaterialSettings(root: Document, report: (text: string) => void, onSaved: () => void = () => {}): () => Promise<void> {
@@ -27,7 +27,7 @@ export function createMaterialSettings(root: Document, report: (text: string) =>
     // Saving an unloaded form would replace saved prompts, so it stays disabled until a load succeeds.
     try { preferences = await hostedRequest<MaterialPreferences>("/material-preferences"); }
     catch { state.textContent = "Your writing prompts could not be loaded. Reload this page to try again."; return; }
-    letter.value = preferences.letterPrompt; resume.value = preferences.resumePrompt; review.value = preferences.resumeReview;
+    letter.value = preferences.letterPrompt; resume.value = preferences.resumePrompt; review.value = normalizeReviewMode(preferences.resumeReview);
     defaults.letterPrompt = preferences.defaultLetterPrompt; defaults.resumePrompt = preferences.defaultResumePrompt;
     for (const button of form.querySelectorAll<HTMLButtonElement>("[data-prompt-default], button[type=submit]")) button.disabled = false;
     state.textContent = "";

@@ -16,8 +16,23 @@ export type ResumeChange =
 
 export interface ResumeLine { id: string; text: string; where: string; editable: "text" | "remove-only"; container?: string }
 
-export const RESUME_REVIEW_MODES = ["whole", "line", "word"] as const;
+/** Every change is approved or denied on its own: a whole changed line, or each edited phrase. */
+export const RESUME_REVIEW_MODES = ["line", "word"] as const;
 export type ResumeReviewMode = (typeof RESUME_REVIEW_MODES)[number];
+/** Saved before per-change review was always on, `whole` now reads as line by line. */
+export function normalizeReviewMode(value: unknown): ResumeReviewMode { return value === "word" ? "word" : "line"; }
+
+/**
+ * The marked-up review PDF links each deleted or inserted run to this address, so the
+ * preview can find where a change sits on the page. The links are never followed.
+ */
+export const MARKUP_LINK = "https://watworks.invalid/";
+export function markupLink(url: string): { side: "del" | "ins"; hunk: string } | null {
+  const match = /^https:\/\/watworks\.invalid\/(d|i)\/(c\d+(?:\.w\d+)?)$/.exec(url);
+  return match ? { side: match[1] === "d" ? "del" : "ins", hunk: match[2]! } : null;
+}
+/** The id a reviewer toggles for one hunk: the hunk itself word by word, else its whole change. */
+export function reviewUnit(hunk: string, mode: ResumeReviewMode): string { return mode === "word" ? hunk : hunk.split(".")[0]!; }
 
 type Entry = { bullets: string[]; technologies?: string | undefined };
 

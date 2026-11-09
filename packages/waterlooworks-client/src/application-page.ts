@@ -4,6 +4,7 @@ import type { ApplicationQuestion, DocumentRequirement, LibraryDocument } from "
 import { discoverPageAction, parsePageLiteral } from "./bootstrap.js";
 import { ProtocolChangedError } from "./errors.js";
 import { screeningCheckboxWidgets } from "./screening-checkbox.js";
+import { screeningSelectOtherWidgets } from "./screening-select-other.js";
 
 export interface ParsedApplicationPage {
   requirements: DocumentRequirement[];
@@ -92,7 +93,7 @@ function inertScreeningScript(script: Element, container: Element): boolean {
   return inertScreeningScaffolds.has(sha256(normalized));
 }
 
-function dynamicScreeningMarkup(container: Element, supportedScripts: Set<Element>): boolean {
+function dynamicScreeningMarkup(container: Element, supportedScripts: Set<Element>, widgetAttributes: Map<Element, Set<string>>): boolean {
   if (container.querySelector(".leader")) return true;
   const inertWizardAttributes: Record<string, string> = {
     "data-additional-step-validation": "validatePreScreenQuestions()",
@@ -101,6 +102,7 @@ function dynamicScreeningMarkup(container: Element, supportedScripts: Set<Elemen
   return [container, ...container.querySelectorAll("*")].some(element => [...element.attributes].some(attribute => {
     if (/^on/i.test(attribute.name)) return Boolean(attribute.value.trim());
     if (!attribute.name.startsWith("data-")) return false;
+    if (widgetAttributes.get(element)?.has(attribute.name)) return false;
     return element !== container || inertWizardAttributes[attribute.name] !== attribute.value;
   })) || [...container.querySelectorAll("script")].some(script => !supportedScripts.has(script) && !inertScreeningScript(script, container));
 }
@@ -108,10 +110,16 @@ function dynamicScreeningMarkup(container: Element, supportedScripts: Set<Elemen
 function parseQuestions(container: Element | null, document: Document, blockers: string[]): ApplicationQuestion[] {
   if (!container) return [];
   const questions: ApplicationQuestion[] = [];
-  const widgets = screeningCheckboxWidgets(container);
+  const checkboxes = screeningCheckboxWidgets(container);
+  const selects = screeningSelectOtherWidgets(container);
+  const widgets = {
+    scripts: new Set([...checkboxes.scripts, ...selects.scripts]),
+    auxiliaryControls: new Set([...checkboxes.auxiliaryControls, ...selects.auxiliaryControls]),
+    requiredNames: checkboxes.requiredNames,
+  };
   const controls = [...container.querySelectorAll("input,select,textarea")].filter(control => active(control) && control.getAttribute("type")?.toLowerCase() !== "hidden" && !widgets.auxiliaryControls.has(control));
   // Dynamic questions cannot safely be reconstructed from static HTML.
-  if (dynamicScreeningMarkup(container, widgets.scripts)) {
+  if (dynamicScreeningMarkup(container, widgets.scripts, selects.inertAttributes)) {
     blockers.push("Pre-screening questions contain unsupported dynamic behavior.");
   }
   const groups = new Map<string, Element[]>();
