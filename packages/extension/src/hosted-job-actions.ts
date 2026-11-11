@@ -47,9 +47,11 @@ export function postingDetail(job: HostedJob): HTMLElement {
 export function canOpenApplicationForm(status: string): boolean {
   return !['submitted', 'dismissed', 'reserved', 'running', 'executing', 'preparing', 'uploading', 'submitting', 'drafting_cover_letter', 'tailoring_resume'].includes(status);
 }
-/** Removal leaves a tombstone, so it is only offered before any application operation exists. */
+/** Statuses with nothing in flight; the server checks the same list against its ledger. */
+const REMOVABLE = ['review', 'resume_review', 'resume_failed', 'cover_letter_review', 'cover_letter_failed', 'confirm_required', 'uncertain'];
+/** Removal only hides the job; its history and no-retry ledger stay. A closed posting must be removable. */
 export function canRemoveJob(job: HostedJob): boolean {
-  return job.status === 'review' && job.operation === undefined && !hostedJobPending(job.jobId);
+  return REMOVABLE.includes(job.status) && !hostedJobPending(job.jobId);
 }
 
 /** The menu items every job shares, after the step's own alternatives. */
@@ -61,7 +63,10 @@ export function jobMenu(job: HostedJob, hooks: WriteHooks, toggleAbout: () => vo
     items.push(open);
   }
   if (canRemoveJob(job)) {
+    // Past the answers step a removed job cannot come back by preparing it again, so it asks twice.
+    let armed = job.status === 'review';
     const remove = menuItem('Remove from my list', async () => {
+      if (!armed) { armed = true; remove.textContent = 'Remove for good? Click again'; return; }
       remove.disabled = true;
       try { await hostedRequest(`/jobs/${encodeURIComponent(job.jobId)}/remove`, {method: 'POST', body: '{}'}); hooks.report(`Removed ${jobTitle(job)}.`); await hooks.refresh(); }
       catch (error) { hooks.report(error instanceof Error ? error.message : String(error), "error"); remove.disabled = false; }

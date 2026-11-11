@@ -146,7 +146,7 @@ export function renderTaskCard(job: HostedJob, options: CardOptions): HTMLElemen
   more.className = "more"; summary.textContent = "⋯"; summary.setAttribute("aria-label", "More actions"); menu.className = "menu";
   const blockedPrimaryOpensForm = task.kind === "blocked";
   for (const item of [...(step.menu ?? []), ...jobMenu(job, options.hooks, toggleAbout, { applicationForm: !blockedPrimaryOpensForm })]) {
-    item.addEventListener("click", () => more.removeAttribute("open"));
+    item.addEventListener("click", () => { if (!item.textContent?.endsWith("Click again")) more.removeAttribute("open"); });
     menu.appendChild(item);
   }
   more.append(summary, menu);

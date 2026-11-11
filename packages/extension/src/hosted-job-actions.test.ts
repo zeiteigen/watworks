@@ -36,10 +36,15 @@ test('the application form cannot be opened during a write or after a verified s
   }
 }));
 
-test('removal is offered only before any application operation exists', () => withDom('<main></main>', () => {
-  for (const status of ['uploading', 'submitting', 'confirm_required', 'submitted', 'uncertain', 'dismissed']) {
+test('removal is offered whenever nothing is running, and asks twice once the job is past review', () => withDom('<main></main>', () => {
+  for (const status of ['uploading', 'submitting', 'submitted', 'dismissed', 'drafting_cover_letter']) {
     expect(labels(jobMenu({jobId: '123', status}, hooks, () => {}, {applicationForm: true}))).not.toContain('Remove from my list');
   }
-  expect(labels(jobMenu({jobId: '123', status: 'review', operation: {}}, hooks, () => {}, {applicationForm: true}))).not.toContain('Remove from my list');
-  expect(labels(jobMenu({jobId: '123', status: 'review'}, hooks, () => {}, {applicationForm: true}))).toContain('Remove from my list');
+  for (const status of ['review', 'confirm_required', 'uncertain', 'cover_letter_review']) {
+    expect(labels(jobMenu({jobId: '123', status, operation: {}}, hooks, () => {}, {applicationForm: true}))).toContain('Remove from my list');
+  }
+  const remove = jobMenu({jobId: '123', status: 'confirm_required'}, hooks, () => {}, {applicationForm: true}).find(item => item.textContent === 'Remove from my list')!;
+  remove.click();
+  expect(remove.textContent).toBe('Remove for good? Click again');
+  expect(remove.disabled).toBe(false);
 }));
