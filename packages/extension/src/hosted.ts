@@ -1,8 +1,8 @@
 import { getHostedAccount, type InsiderAccount } from "./insider-account.js";
 import { hostedRequest, streamHostedEvents, type HostedProfile, type HostedResume, type HostedWorkspace } from "./hosted-client.js";
-import { hostedQueueNeedsPolling, launchHostedSearch } from "./hosted-queue.js";
+import { hostedQueueNeedsPolling, launchHostedSearch, type Tone } from "./hosted-queue.js";
 import { createAccountSync } from "./hosted-signin.js";
-import { createHostedView } from "./hosted-view.js";
+import { createFocusView } from "./hosted-focus.js";
 import { createAiSettings } from "./hosted-ai-settings.js";
 import { createLetterSettings } from "./hosted-letter-settings.js";
 import { createMaterialSettings } from "./hosted-material-settings.js";
@@ -20,8 +20,12 @@ let accountEmail: string | null = null;
 let loadedEmail: string | null = null;
 /** Posting IDs requested from this page that have not reached the queue yet. */
 const pendingPostings = new Set<string>();
-function message(text: string): void { status.textContent = text; }
-const showWorkspace = createHostedView(document, refreshQueue, message);
+/** Errors read as an alert that stays in view; anything else is a quiet status line. */
+function message(text: string, tone: Tone = "info"): void {
+  status.textContent = text; status.classList.toggle("error", tone === "error" && text !== "");
+  status.setAttribute("role", tone === "error" ? "alert" : "status");
+}
+const showWorkspace = createFocusView(document, refreshQueue, message);
 const showAi = createAiSettings(document, message, refreshQueue);
 const loadLetterSettings = createLetterSettings(document, message);
 // The review mode changes how resume changes render, so the queue reloads after a save.
@@ -70,7 +74,7 @@ function showResumes(resumes: HostedResume[]): void {
     remove.addEventListener("click", async () => {
       remove.disabled = true;
       try { await hostedRequest(`/resumes/${encodeURIComponent(resume.id)}/remove`, { method: "POST", body: "{}" }); row.remove(); message(`Removed ${resume.name}.`); }
-      catch (error) { message(error instanceof Error ? error.message : String(error)); remove.disabled = false; }
+      catch (error) { message(error instanceof Error ? error.message : String(error), "error"); remove.disabled = false; }
     });
     row.append(name, size, remove); list.appendChild(row);
   }
@@ -91,13 +95,13 @@ $("#context-form").addEventListener("submit", async event => {
   try {
     await hostedRequest("/context", { method: "POST", body: JSON.stringify({ backgroundNotes: values.get("backgroundNotes"), workingMemory: values.get("workingMemory") }) });
     message("Background and working memory saved for future preparation.");
-  } catch (error) { message(error instanceof Error ? error.message : String(error)); }
+  } catch (error) { message(error instanceof Error ? error.message : String(error), "error"); }
   finally { button.disabled = false; }
 });
 function showAccount(account: InsiderAccount): void {
   accountEmail = account.email;
   $("#identity").textContent = account.email ? `WaterlooWorks account · ${account.email}` : "Sign in to WaterlooWorks to connect your account.";
-  $<HTMLButtonElement>("#waterlooworks-signin").hidden = !!account.email && !account.reason;
+  $<HTMLElement>("#signin-alert").hidden = !!account.email && !account.reason;
 }
 async function load(): Promise<void> {
   message("Loading your workspace…");
@@ -116,15 +120,14 @@ function updateQueue(workspace: HostedWorkspace): void {
     const say = (text: string) => { pendingPostings.delete(id); $("#launch-state").textContent = text; message(text); };
     // Runs come newest first. A finished run with no job was skipped: closed, already applied to, or removed by you.
     const run = workspace.runs.find(item => item.kind === "posting" && item.posting_id === id);
-    if (latestJobIds.has(id)) say(`Posting ${id} is in your queue.`);
-    else if (run?.status === "failed") say(`Posting ${id} could not be prepared. Check your WaterlooWorks session and AI connection, then try again.`);
-    else if (run?.status === "ready") say(`Posting ${id} was not added. It may be closed, already applied to, or removed from your queue.`);
+    if (latestJobIds.has(id)) say(`Posting ${id} is ready in your list.`);
+    else if (run?.status === "failed") { say(`Posting ${id} could not be prepared. Check your WaterlooWorks session and AI connection, then try again.`); message($("#launch-state").textContent ?? "", "error"); }
+    else if (run?.status === "ready") say(`Posting ${id} was not added. It may be closed, already applied to, or removed from your list.`);
   }
   const allowed = workspace.ai.available === true;
   const dailyButton = $("#daily-launch") as HTMLButtonElement;
   dailyButton.disabled = !allowed;
-  dailyButton.title = allowed ? "" : workspace.ai.reason || "Connect ChatGPT or add an API key in Settings.";
-  $("#daily-state").textContent = allowed ? "Daily discovery ready" : "Connect ChatGPT or add an API key to enable search";
+  dailyButton.title = allowed ? "" : workspace.ai.reason || "Connect ChatGPT or add an API key in Setup.";
   showWorkspace(workspace);
   if (queueTimer) clearTimeout(queueTimer);
   if (hostedQueueNeedsPolling(workspace)) {
@@ -151,14 +154,14 @@ async function refreshQueue(): Promise<void> {
     const workspace = await hostedRequest<HostedWorkspace>();
     showAi(workspace.ai);
     updateQueue(workspace);
-  } catch (error) { message(error instanceof Error ? error.message : String(error)); }
+  } catch (error) { message(error instanceof Error ? error.message : String(error), "error"); }
 }
 const profileForm = $("#profile-form") as HTMLFormElement;
 options(profileForm.elements.namedItem("scheduleHour") as HTMLSelectElement);
 profileForm.addEventListener("submit", async event => {
   event.preventDefault(); const button = profileForm.querySelector<HTMLButtonElement>("button[type=submit]")!; button.disabled = true;
   try { const profile = profileFromForm(profileForm); await hostedRequest("/profile", { method: "POST", body: JSON.stringify(profile) }); await refreshQueue(); $("#saved").textContent = "Saved"; message("Your profile is saved."); }
-  catch (error) { message(error instanceof Error ? error.message : String(error)); }
+  catch (error) { message(error instanceof Error ? error.message : String(error), "error"); }
   finally { button.disabled = false; }
 });
 $("#resume-form").addEventListener("submit", async event => {
@@ -173,7 +176,7 @@ $("#resume-form").addEventListener("submit", async event => {
     for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
     await hostedRequest("/resumes", { method: "POST", body: JSON.stringify({ name: (($<HTMLInputElement>("#resume-name").value.trim() || selectedFile.name).replace(/(?:\.pdf)?$/i, ".pdf")), base64: btoa(binary) }) });
     form.reset(); await load(); message("Resume uploaded.");
-  } catch (error) { message(error instanceof Error ? error.message : String(error)); }
+  } catch (error) { message(error instanceof Error ? error.message : String(error), "error"); }
   finally { button.disabled = false; }
 });
 $("#launch-form").addEventListener("submit", async event => {
@@ -181,25 +184,27 @@ $("#launch-form").addEventListener("submit", async event => {
   const state = $("#launch-state"), say = (text: string) => { state.textContent = text; message(text); };
   if (button.disabled) return;
   const postingId = String(new FormData(form).get("postingId") ?? "").trim(); if (!/^\d+$/.test(postingId)) { say("Enter a numeric WaterlooWorks posting ID."); return; }
-  if (latestJobIds.has(postingId)) { say(`Posting ${postingId} is already in your queue.`); return; }
-  if (pendingPostings.has(postingId)) { say(`Posting ${postingId} is already being prepared. It will appear in your queue when ready.`); return; }
-  button.disabled = true; button.textContent = "Preparing…"; showWorkspace.reveal(postingId);
+  if (latestJobIds.has(postingId)) { say(`Posting ${postingId} is already in your list.`); return; }
+  if (pendingPostings.has(postingId)) { say(`Posting ${postingId} is already being prepared. It will appear here when ready.`); return; }
+  button.disabled = true; button.textContent = "Preparing…";
   // Tracked before launching: the refresh inside the launch may already report an existing run's result.
   pendingPostings.add(postingId);
   try {
     if (await launchHostedSearch(say, refreshQueue, postingId)()) { setTimeout(() => { if (pendingPostings.delete(postingId)) state.textContent = ""; }, 10 * 60_000); form.reset(); }
     else pendingPostings.delete(postingId);
   }
-  finally { button.disabled = false; button.textContent = "Prepare posting"; }
+  finally { button.disabled = false; button.textContent = "Prepare"; }
 });
 $("#daily-launch").addEventListener("click", async event => {
   const button = event.currentTarget as HTMLButtonElement;
   if (button.disabled) return;
   button.disabled = true; button.textContent = "Launching…";
-  try { if (await launchHostedSearch(message, refreshQueue)()) showWorkspace.showNew(); }
-  finally { button.disabled = false; button.textContent = "Launch today’s search"; }
+  try { await launchHostedSearch(message, refreshQueue)(); }
+  finally { button.disabled = false; button.textContent = "Run today’s search"; }
 });
-document.querySelector('[data-tab="materials"]')?.addEventListener("click", () => {
+// Background notes can change from preparation (remembered answers); reload them when the section opens.
+$<HTMLDetailsElement>('[data-section="background"]').addEventListener("toggle", event => {
+  if (!(event.currentTarget as HTMLDetailsElement).open) return;
   void hostedRequest<HostedWorkspace>().then(workspace => showContext(workspace.profile)).catch(error => message(String(error)));
 });
 /** Read-only: follows sign-in changes. A full load replaces the forms, so it only runs for a new account. */
@@ -212,7 +217,7 @@ const accountSync = createAccountSync(async () => {
     // Every form and per-job map on this page belongs to the old account; only a fresh page is safe.
     else if (account.email !== loadedEmail) location.reload();
     else await refreshQueue();
-  } catch (error) { message(error instanceof Error ? error.message : String(error)); }
+  } catch (error) { message(error instanceof Error ? error.message : String(error), "error"); }
 });
 /** Sign-in signals also fire during ordinary browsing, so they only matter until the workspace is connected. */
 function signInSignal(): void { if (accountEmail === null || accountEmail !== loadedEmail) accountSync.schedule(); }
@@ -227,7 +232,7 @@ $("#waterlooworks-signin").addEventListener("click", async event => {
     const reply = await chrome.runtime.sendMessage({ type: "signIn" });
     if (!reply?.ok) throw new Error(reply?.error ?? "Could not open WaterlooWorks sign-in.");
     message("Finish signing in to WaterlooWorks in the other tab. This page will update when you’re connected.");
-  } catch (error) { message(error instanceof Error ? error.message : String(error)); }
+  } catch (error) { message(error instanceof Error ? error.message : String(error), "error"); }
   finally { button.disabled = false; }
 });
 $("#chatgpt-connect").addEventListener("click", async event => {
@@ -236,16 +241,16 @@ $("#chatgpt-connect").addEventListener("click", async event => {
     const reply = await chrome.runtime.sendMessage({ type: "chatgptSignIn" });
     if (!reply?.ok) throw new Error(reply?.error ?? "Could not start ChatGPT sign-in.");
     message("Finish signing in to ChatGPT in the new tab. This page will update when it’s connected.");
-  } catch (error) { message(error instanceof Error ? error.message : String(error)); button.disabled = false; }
+  } catch (error) { message(error instanceof Error ? error.message : String(error), "error"); button.disabled = false; }
 });
 chrome.runtime.onMessage.addListener((message: unknown) => {
   if ((message as { type?: string } | null)?.type === "waterlooWorksSignedIn") { signInSignal(); return; }
   if (!message || typeof message !== "object" || (message as { type?: string }).type !== "chatgptSignInComplete") return;
   const result = message as { connected?: boolean; email?: string; error?: string };
   if (result.connected) messageStatus(`ChatGPT connected${result.email ? ` · ${result.email}` : ""}.`);
-  else messageStatus(result.error || "ChatGPT connection was not completed.");
+  else messageStatus(result.error || "ChatGPT connection was not completed.", "error");
   void refreshQueue();
 });
 window.addEventListener("pagehide", () => { accountSync.stop(); queueEvents?.abort(); if (queueTimer) clearTimeout(queueTimer); if (eventRefreshTimer) clearTimeout(eventRefreshTimer); });
-function messageStatus(text: string): void { message(text); }
+function messageStatus(text: string, tone: Tone = "info"): void { message(text, tone); }
 void accountSync.run();

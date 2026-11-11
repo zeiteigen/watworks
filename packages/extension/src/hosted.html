@@ -5,69 +5,133 @@
   <title>WatWorks · Job applications</title>
   <link rel="stylesheet" href="dashboard.css"><link rel="stylesheet" href="hosted.css">
 </head>
-<body><main>
-  <div class="masthead"><span class="wordmark"><svg viewBox="0 0 64 64" width="32" height="40" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M32.2 4.5 31.8 55 M32 6 20 21 44 20 M32 17 13 37 51 36 M32 30 6 53 58 52"/></g></svg>wat<span class="ink">/</span>mcp</span><span class="workspace-note">Your next chapter, in progress.</span></div>
-  <header><div><p class="eyebrow">Your application notebook</p><p class="lede">Review your documents and answers, then apply. Each application needs your approval.</p></div><div class="header-status"><div id="identity" class="account-plan meta" aria-live="polite">Checking account…</div><button id="waterlooworks-signin" type="button" class="secondary" hidden>Sign in to WaterlooWorks ↗</button></div></header>
-  <nav class="tabs" aria-label="Workspace sections">
-    <button type="button" class="tab active" data-tab="jobs" aria-current="page" aria-controls="jobs-panel">Daily Discover</button>
-    <button type="button" class="tab" data-tab="applications" aria-controls="applications-panel">In progress</button>
-    <button type="button" class="tab" data-tab="submitted" aria-controls="submitted-panel">Submitted</button>
-    <button type="button" class="tab" data-tab="materials" aria-controls="materials-panel">Materials</button>
-    <button type="button" class="tab" data-tab="settings" aria-controls="settings-panel">Settings</button>
-  </nav>
+<body class="focus-page">
+  <div class="top">
+    <button type="button" class="wordmark" data-screen="home" aria-label="WatWorks home"><svg viewBox="0 0 64 64" width="28" height="36" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M32.2 4.5 31.8 55 M32 6 20 21 44 20 M32 17 13 37 51 36 M32 30 6 53 58 52"/></g></svg>wat<span class="ink">/</span>mcp</button>
+    <nav class="nav" aria-label="Workspace">
+      <button type="button" class="nav-link" data-screen="jobs">All jobs</button>
+      <button type="button" class="nav-link" data-screen="setup">Setup</button>
+      <details class="more plus">
+        <summary aria-label="Find more jobs">+</summary>
+        <div class="menu">
+          <button id="daily-launch" type="button" class="menu-item">Run today’s search</button>
+          <form id="launch-form" class="menu-form"><label for="posting-id">Prepare a posting by ID</label><div class="inline"><input id="posting-id" name="postingId" inputmode="numeric" pattern="[0-9]+" placeholder="e.g. 498765" required><button type="submit" class="secondary">Prepare</button></div></form>
+          <p id="launch-state" class="hint" role="status" aria-live="polite"></p>
+        </div>
+      </details>
+    </nav>
+  </div>
+  <div class="alerts">
+    <p id="signin-alert" class="alert" hidden>Sign in to WaterlooWorks to keep working. <button id="waterlooworks-signin" type="button" class="link">Sign in ↗</button></p>
+    <p id="ai-alert" class="alert" hidden><span></span> <button type="button" class="link" data-screen="setup">Open setup</button></p>
+  </div>
   <p id="status" role="status" aria-live="polite">Loading…</p>
-  <section id="onboarding-panel" data-workspace-panel="onboarding" aria-label="Get started" hidden><h2>Welcome to WatWorks</h2><p>Complete your profile, connect ChatGPT or add an API key, and add a resume to get started.</p><div id="onboarding-fields"></div><button type="button" class="secondary" data-open-tab="materials">Add resumes and background notes</button></section>
-  <section id="jobs-panel" data-workspace-panel="jobs" aria-label="Daily Discover">
-    <section id="setup-notice" class="setup-notice" aria-label="Finish setup" hidden><p class="meta">Set your search preferences, connect ChatGPT or add an API key, and add your resumes to get started.</p><div class="actions"><button type="button" class="secondary" data-open-tab="settings">Open settings</button><button type="button" class="secondary" data-open-tab="materials">Add resumes</button></div></section>
-    <div class="discovery-toolbar"><p id="daily-state" class="meta">Checking search status</p><button id="daily-launch" type="button" aria-describedby="daily-state">Launch today’s search</button></div>
-    <div class="queue-tools"><label class="search-label" for="job-search">Find a job<input id="job-search" type="search" placeholder="Search role, company, or posting ID…" autocomplete="off"></label><span id="queue-count" class="meta" aria-live="polite"></span></div>
-    <nav class="tabs queue-tabs" aria-label="Job status"><button type="button" class="tab active" data-queue-filter="all" aria-pressed="true">All jobs</button><button type="button" class="tab" data-queue-filter="review" aria-pressed="false">Needs review</button><button type="button" class="tab" data-queue-filter="confirm_required" aria-pressed="false">Ready to submit</button></nav>
-    <button id="new-jobs" type="button" class="secondary new-jobs" aria-live="polite" hidden></button>
-    <section id="queue" aria-label="Prepared jobs"></section>
-    <section class="posting-lookup" aria-labelledby="posting-heading"><div><h2 id="posting-heading">Have a posting in mind?</h2><p class="meta">Prepare an application for a specific WaterlooWorks posting.</p></div><form id="launch-form"><label for="posting-id">Posting ID<input id="posting-id" name="postingId" inputmode="numeric" pattern="[0-9]+" placeholder="e.g. 498765" required></label><button type="submit">Prepare posting</button></form><p id="launch-state" class="meta" role="status" aria-live="polite"></p></section>
-  </section>
-  <section id="applications-panel" data-workspace-panel="applications" aria-label="In progress" hidden><h2>In progress</h2><p class="meta">Live application progress updates automatically. Outcomes that need checking appear in Needs review.</p><section id="applications" aria-label="Application history"></section></section>
-  <section id="submitted-panel" data-workspace-panel="submitted" aria-label="Successfully submitted" hidden><h2>Successfully submitted</h2><section id="submitted"></section></section>
-  <section id="materials-panel" data-workspace-panel="materials" aria-label="Materials" hidden><h2>Resumes</h2><p class="meta">Upload the resumes you want to use for applications. PDF, smaller than 5 MB each.</p><form id="resume-form" class="resume-upload"><label for="resume-file">Resume PDF<input id="resume-file" type="file" accept="application/pdf,.pdf" required></label><label for="resume-name">Name<input id="resume-name" placeholder="Resume name"></label><button type="submit">Upload</button></form><ul id="resumes" class="resume-list"></ul>
-    <h2>Background and working memory</h2><p class="meta">Add project details, accomplishments, interests, and examples that do not fit on your resume. Reviewed screening answers are remembered for the next natural preparation call; saving does not call AI.</p>
-    <form id="context-form" class="profile-form"><label>Detailed background notes<textarea name="backgroundNotes" rows="10" maxlength="30000" placeholder="Projects, skills, outcomes, stories for cover letters…"></textarea></label><div id="working-memory"></div><button type="submit">Save background notes</button></form>
-    <section class="writing-prompts" aria-labelledby="prompts-heading"><h2 id="prompts-heading">Writing prompts</h2><p class="meta">These instructions guide new drafts. Your resume, background notes and the posting stay the only sources of facts, whatever a prompt says. Drafts you already have keep their current version.</p>
-      <form id="material-prompts-form" class="profile-form">
-        <label>Cover letter prompt <span class="hint">Tone, structure, and what to emphasize or avoid</span><textarea name="letterPrompt" rows="16" maxlength="20000" spellcheck="true"></textarea></label>
-        <div class="actions"><button type="button" class="secondary" data-prompt-default="letterPrompt" disabled>Restore the default cover letter prompt</button></div>
-        <label>Custom resume prompt <span class="hint">Used when you choose “Send with custom resume” on a job. It tailors one of your resumes above</span><textarea name="resumePrompt" rows="12" maxlength="20000" spellcheck="true"></textarea></label>
-        <div class="actions"><button type="button" class="secondary" data-prompt-default="resumePrompt" disabled>Restore the default resume prompt</button></div>
-        <label>Keep or drop custom resume changes<select name="resumeReview"><option value="line">Line by line: each changed line is one choice</option><option value="word">Word by word: each edited phrase is its own choice</option></select></label>
-        <p id="prompt-settings-state" class="meta" role="status"></p><div class="actions"><button type="submit" disabled>Save writing prompts</button></div>
-      </form></section></section>
-  <section id="settings-panel" data-workspace-panel="settings" aria-label="Settings" hidden>
-    <section class="connection-settings" aria-labelledby="chatgpt-heading"><h2 id="chatgpt-heading">AI connection</h2><p id="ai-reason" class="meta">Connect ChatGPT or add an API key to enable search and application preparation.</p><button id="chatgpt-connect" type="button">Continue with ChatGPT ↗</button>
-      <details class="api-key-details"><summary>Use your own API key instead</summary>
-        <p class="meta">Your key is encrypted on the WatWorks server and used only for your searches and letters. When saved, it is used instead of ChatGPT. Your provider bills you, and your profile, resumes and postings are sent to it. The model must accept PDF input.</p>
-        <form id="api-key-form" class="profile-form api-key-form">
-          <div class="two-col"><label>API style<select name="style"><option value="openai">OpenAI-style</option><option value="anthropic">Anthropic-style</option></select></label><label>Model<input name="model" required maxlength="200" autocomplete="off" spellcheck="false"></label></div>
-          <label>Base URL <span class="hint">Optional. For compatible providers and gateways</span><input name="baseUrl" type="url" maxlength="500" autocomplete="off" spellcheck="false"></label>
-          <label>API key <span class="hint">Saved keys are never shown again. Enter it again to change any setting</span><input name="apiKey" type="password" required maxlength="1000" autocomplete="off" spellcheck="false"></label>
-          <div class="actions"><button type="submit">Check and save key</button><button id="api-key-remove" type="button" class="secondary" hidden>Remove key</button></div>
+  <main>
+    <section id="home-screen" data-screen-panel="home" class="home" aria-labelledby="home-heading">
+      <p id="greeting" class="greeting">Hello.</p>
+      <h1 id="home-heading">Loading your workspace…</h1>
+      <p id="home-sub" class="meta"></p>
+      <button id="start-review" type="button" class="start" hidden>Start review</button>
+      <div class="quiet"><button id="quiet-toggle" type="button" class="link" aria-expanded="false" aria-controls="quiet-detail" hidden></button><ul id="quiet-detail" hidden></ul></div>
+    </section>
+
+    <section id="session-screen" data-screen-panel="session" aria-label="Review" hidden>
+      <div class="session-bar"><button id="leave-session" type="button" class="link">← Leave review</button><span id="session-count"></span><span id="session-arrived" aria-live="polite"></span></div>
+      <div class="progress" aria-hidden="true"><i id="session-progress"></i></div>
+      <div id="task-stage" class="stage"></div>
+    </section>
+
+    <section id="done-screen" data-screen-panel="done" class="done" aria-labelledby="done-heading" hidden>
+      <h1 id="done-heading" class="hand">Nicely done.</h1>
+      <ul id="done-summary"></ul>
+      <button id="done-home" type="button">Back to home</button>
+    </section>
+
+    <section id="jobs-screen" data-screen-panel="jobs" class="page" aria-labelledby="jobs-heading" hidden>
+      <h1 id="jobs-heading">All jobs</h1>
+      <div id="job-groups"></div>
+    </section>
+
+    <section id="setup-screen" data-screen-panel="setup" class="page setup" aria-labelledby="setup-heading" hidden>
+      <h1 id="setup-heading">Setup</h1>
+      <p id="setup-intro" class="meta"></p>
+
+      <details class="setup-section" data-section="connections">
+        <summary><span class="name">Connections</span><span class="sum" data-summary="connections"></span></summary>
+        <div class="section-body connection-settings">
+          <p id="identity" class="meta" aria-live="polite">Checking account…</p>
+          <p id="ai-reason" class="meta">Connect ChatGPT or add an API key to enable search and application preparation.</p>
+          <button id="chatgpt-connect" type="button">Continue with ChatGPT ↗</button>
+          <details class="api-key-details"><summary>Use your own API key instead</summary>
+            <p class="meta">Your key is encrypted on the WatWorks server and used only for your searches and letters. When saved, it is used instead of ChatGPT. Your provider bills you, and your profile, resumes and postings are sent to it. The model must accept PDF input.</p>
+            <form id="api-key-form" class="profile-form api-key-form">
+              <div class="two-col"><label>API style<select name="style"><option value="openai">OpenAI-style</option><option value="anthropic">Anthropic-style</option></select></label><label>Model<input name="model" required maxlength="200" autocomplete="off" spellcheck="false"></label></div>
+              <label>Base URL <span class="hint">Optional. For compatible providers and gateways</span><input name="baseUrl" type="url" maxlength="500" autocomplete="off" spellcheck="false"></label>
+              <label>API key <span class="hint">Saved keys are never shown again. Enter it again to change any setting</span><input name="apiKey" type="password" required maxlength="1000" autocomplete="off" spellcheck="false"></label>
+              <div class="actions"><button type="submit">Check and save key</button><button id="api-key-remove" type="button" class="secondary" hidden>Remove key</button></div>
+            </form>
+          </details>
+        </div>
+      </details>
+
+      <details class="setup-section" data-section="profile">
+        <summary><span class="name">You and your search</span><span class="sum" data-summary="profile"></span></summary>
+        <form id="profile-form" class="section-body profile-form">
+          <label>Roles <span class="hint">Separate each role with a comma</span><input required name="roles" placeholder="Software developer, data analyst"></label>
+          <div class="two-col"><label>Minimum hourly pay <span class="hint">CAD</span><input name="minimumHourlyPay" type="number" min="0" step="0.5" placeholder="Any"></label><label>Preferred locations <span class="hint">Separate with commas</span><input name="locations" placeholder="Waterloo, Toronto, Remote"></label></div>
+          <label>Are you eligible for an 8 month work term?<select name="eightMonthEligible"><option value="unknown">Not sure yet</option><option value="yes">Yes</option><option value="no">No</option></select></label>
+          <div class="two-col"><label>Countries of citizenship <span class="hint">Separate with commas</span><input name="citizenshipCountries" placeholder="Canada, United States" maxlength="3658"></label><label>Countries of permanent residency <span class="hint">Separate with commas</span><input name="permanentResidencyCountries" placeholder="Canada" maxlength="3658"></label></div>
+          <label>Fluent languages <span class="hint">Separate with commas</span><input name="fluentLanguages" placeholder="English, French" maxlength="3658"></label>
+          <label>Anything else we should know?<textarea name="notes" rows="3" placeholder="Industries, work style, term dates…"></textarea></label>
+          <label>Daily search time <span class="hint">Toronto time</span><select name="scheduleHour"></select></label>
+          <div class="actions"><button type="submit">Save</button><span id="saved" class="meta" aria-live="polite"></span></div>
         </form>
-      </details></section>
-    <h2>Your profile</h2><form id="profile-form" class="profile-form">
-      <label>Are you eligible for an 8 month work term?<select name="eightMonthEligible"><option value="unknown">Not sure yet</option><option value="yes">Yes</option><option value="no">No</option></select></label>
-      <label>Roles <span class="hint">Separate each role with a comma</span><input required name="roles" placeholder="Software developer, data analyst"></label>
-      <div class="two-col"><label>Countries of citizenship <span class="hint">Separate with commas</span><input name="citizenshipCountries" placeholder="Canada, United States" maxlength="3658"></label><label>Countries of permanent residency <span class="hint">Separate with commas</span><input name="permanentResidencyCountries" placeholder="Canada" maxlength="3658"></label></div>
-      <label>Fluent languages <span class="hint">Separate with commas</span><input name="fluentLanguages" placeholder="English, French" maxlength="3658"></label>
-      <div class="two-col"><label>Minimum hourly pay <span class="hint">CAD</span><input name="minimumHourlyPay" type="number" min="0" step="0.5" placeholder="Any"></label><label>Preferred locations <span class="hint">Separate with commas</span><input name="locations" placeholder="Waterloo, Toronto, Remote"></label></div>
-      <label>Anything else we should know?<textarea name="notes" rows="3" placeholder="Industries, work style, term dates…"></textarea></label>
-      <label>Daily discovery time <span class="hint">Toronto time</span><select name="scheduleHour"></select></label>
-      <div class="actions"><button type="submit">Save preferences</button><span id="saved" class="meta" aria-live="polite"></span></div>
-    </form>
-    <section class="cover-letter-settings" aria-labelledby="cover-letter-heading"><h2 id="cover-letter-heading">Cover letter template</h2><p class="meta">Applied to new drafts. Letters you have already drafted keep their current version. Edit the cover letter prompt in Materials.</p>
-      <form id="cover-letter-form" class="profile-form cover-letter-form">
-        <label>LaTeX template <span class="hint">Leave empty to use the default</span><textarea name="template" rows="14" maxlength="100000" spellcheck="false" wrap="off" placeholder="\documentclass{article}…"></textarea></label>
-        <p class="meta marker-list">The letter is written as plain text and placed at these markers, safely escaped. <code>%%WAT:BODY%%</code> is required: <span id="letter-template-markers"></span></p>
-        <p class="meta">Available packages include geometry, xcolor, hyperref, titlesec, enumitem, parskip, fancyhdr, setspace and multicol, with the article and letter classes. Regular and bold text work up to \Huge; italic up to 12pt; small caps from 9 to 12pt; bold italic is unavailable. If something else is missing, the draft reports the LaTeX error. The letter must fit on one page.</p>
-        <p id="letter-settings-state" class="meta" role="status"></p><div class="actions"><button type="submit" disabled>Save cover letter template</button><button id="letter-template-default" type="button" class="secondary" disabled>Start from the default template</button></div>
-      </form></section>
-  </section>
-</main><script type="module" src="hosted.js"></script></body>
+      </details>
+
+      <details class="setup-section" data-section="resumes">
+        <summary><span class="name">Resumes</span><span class="sum" data-summary="resumes"></span></summary>
+        <div class="section-body">
+          <p class="meta">PDF, smaller than 5 MB each. WatWorks picks the best one for each posting.</p>
+          <form id="resume-form" class="resume-upload"><label for="resume-file">Resume PDF<input id="resume-file" type="file" accept="application/pdf,.pdf" required></label><label for="resume-name">Name<input id="resume-name" placeholder="Resume name"></label><button type="submit">Upload</button></form>
+          <ul id="resumes" class="resume-list"></ul>
+        </div>
+      </details>
+
+      <details class="setup-section" data-section="background">
+        <summary><span class="name">Background notes</span><span class="sum" data-summary="background"></span></summary>
+        <form id="context-form" class="section-body profile-form">
+          <p class="meta">Projects, accomplishments and stories that don't fit on your resume. Reviewed screening answers are remembered here too. Saving never calls AI.</p>
+          <label>Detailed background notes<textarea name="backgroundNotes" rows="10" maxlength="30000" placeholder="Projects, skills, outcomes, stories for cover letters…"></textarea></label>
+          <div id="working-memory"></div>
+          <button type="submit">Save background notes</button>
+        </form>
+      </details>
+
+      <details class="setup-section" data-section="prompts">
+        <summary><span class="name">Writing prompts</span><span class="sum">How letters and tailored resumes are written</span></summary>
+        <form id="material-prompts-form" class="section-body profile-form">
+          <p class="meta">Your resume, background notes and the posting stay the only sources of facts, whatever a prompt says. Drafts you already have keep their current version.</p>
+          <label>Cover letter prompt <span class="hint">Tone, structure, and what to emphasize or avoid</span><textarea name="letterPrompt" rows="16" maxlength="20000" spellcheck="true"></textarea></label>
+          <div class="actions"><button type="button" class="secondary" data-prompt-default="letterPrompt" disabled>Restore the default cover letter prompt</button></div>
+          <label>Tailored resume prompt <span class="hint">Used when you choose “Tailor it for this job”</span><textarea name="resumePrompt" rows="12" maxlength="20000" spellcheck="true"></textarea></label>
+          <div class="actions"><button type="button" class="secondary" data-prompt-default="resumePrompt" disabled>Restore the default resume prompt</button></div>
+          <label>Keep or drop tailored resume changes<select name="resumeReview"><option value="line">Line by line: each changed line is one choice</option><option value="word">Word by word: each edited phrase is its own choice</option></select></label>
+          <p id="prompt-settings-state" class="meta" role="status"></p><div class="actions"><button type="submit" disabled>Save writing prompts</button></div>
+        </form>
+      </details>
+
+      <details class="setup-section" data-section="template">
+        <summary><span class="name">Cover letter template</span><span class="sum">LaTeX, optional</span></summary>
+        <form id="cover-letter-form" class="section-body profile-form cover-letter-form">
+          <p class="meta">Applied to new drafts. Letters you have already drafted keep their current version.</p>
+          <label>LaTeX template <span class="hint">Leave empty to use the default</span><textarea name="template" rows="14" maxlength="100000" spellcheck="false" wrap="off" placeholder="\documentclass{article}…"></textarea></label>
+          <p class="meta marker-list">The letter is written as plain text and placed at these markers, safely escaped. <code>%%WAT:BODY%%</code> is required: <span id="letter-template-markers"></span></p>
+          <p class="meta">Available packages include geometry, xcolor, hyperref, titlesec, enumitem, parskip, fancyhdr, setspace and multicol, with the article and letter classes. Regular and bold text work up to \Huge; italic up to 12pt; small caps from 9 to 12pt; bold italic is unavailable. If something else is missing, the draft reports the LaTeX error. The letter must fit on one page.</p>
+          <p id="letter-settings-state" class="meta" role="status"></p><div class="actions"><button type="submit" disabled>Save cover letter template</button><button id="letter-template-default" type="button" class="secondary" disabled>Start from the default template</button></div>
+        </form>
+      </details>
+    </section>
+  </main>
+  <script type="module" src="hosted.js"></script>
+</body>
 </html>

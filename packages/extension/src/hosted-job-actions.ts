@@ -1,6 +1,6 @@
 import { hostedRequest } from './hosted-client.js';
-import type { HostedJob } from './hosted-queue.js';
-import { hostedDialog } from './hosted-dialog.js';
+import { hostedJobPending, jobTitle, type HostedJob, type WriteHooks } from './hosted-queue.js';
+import { menuItem, openOnWaterlooWorks } from './hosted-step.js';
 
 const fieldNames: Record<string, string> = {
   id: 'Posting ID', organization: 'Employer', workTerm: 'Work term', jobType: 'Job type',
@@ -31,7 +31,7 @@ function appendField(list: HTMLElement, key: string, value: unknown): void {
   const term = document.createElement('dt'), description = document.createElement('dd');
   term.textContent = label(key); appendValue(description, value); list.appendChild(term); list.appendChild(description);
 }
-function postingDetail(job: HostedJob): HTMLElement {
+export function postingDetail(job: HostedJob): HTMLElement {
   const detail = document.createElement('section'), heading = document.createElement('h4'), fields = document.createElement('dl');
   detail.className = 'posting-content'; heading.textContent = 'Full posting';
   detail.appendChild(heading); appendField(fields, 'id', job.jobId);
@@ -44,49 +44,29 @@ function postingDetail(job: HostedJob): HTMLElement {
 }
 
 /** A second write from WaterlooWorks must not race one already running, or follow a verified submission. */
-function canOpenApplicationForm(status: string): boolean {
+export function canOpenApplicationForm(status: string): boolean {
   return !['submitted', 'dismissed', 'reserved', 'running', 'executing', 'preparing', 'uploading', 'submitting', 'drafting_cover_letter', 'tailoring_resume'].includes(status);
 }
-/** Navigation only: the background opens a tab and never touches a form control. */
-function waterlooWorksButton(text: string, type: 'openPosting' | 'openApplicationForm', job: HostedJob, report: (value: string) => void): HTMLButtonElement {
-  const button = document.createElement('button');
-  button.type = 'button'; button.className = 'secondary'; button.textContent = text;
-  button.addEventListener('click', async () => {
-    button.disabled = true;
-    try {
-      const reply = await chrome.runtime.sendMessage({type, jobId: job.jobId}) as {ok?: boolean; error?: string} | undefined;
-      if (!reply?.ok) throw new Error(reply?.error ?? 'Could not open WaterlooWorks.');
-    } catch (error) { report(error instanceof Error ? error.message : String(error)); }
-    finally { button.disabled = false; }
-  });
-  return button;
+/** Removal leaves a tombstone, so it is only offered before any application operation exists. */
+export function canRemoveJob(job: HostedJob): boolean {
+  return job.status === 'review' && job.operation === undefined && !hostedJobPending(job.jobId);
 }
 
-export function appendHostedJobActions(card: HTMLElement, job: HostedJob, refresh: () => void | Promise<void>, report: (value: string) => void): void {
-  const actions = document.createElement('div'), toggle = document.createElement('button');
-  const body = document.createElement('div'), source = document.createElement('div');
-  source.className = 'actions posting-source'; source.appendChild(waterlooWorksButton('View on WaterlooWorks ↗', 'openPosting', job, report));
-  body.append(source, postingDetail(job));
-  const modal = hostedDialog(job.posting?.title || `Posting ${job.jobId}`, body);
-  actions.className = 'actions job-actions'; toggle.type = 'button'; toggle.className = 'secondary'; toggle.textContent = 'View in detail';
-  toggle.setAttribute('aria-haspopup', 'dialog');
-  toggle.addEventListener('click', modal.open);
-  actions.appendChild(toggle);
-  if (canOpenApplicationForm(job.status)) {
+/** The menu items every job shares, after the step's own alternatives. */
+export function jobMenu(job: HostedJob, hooks: WriteHooks, toggleAbout: () => void, options: { applicationForm: boolean }): HTMLButtonElement[] {
+  const items = [menuItem('About this job', toggleAbout), menuItem('View on WaterlooWorks ↗', () => void openOnWaterlooWorks('openPosting', job, hooks.report))];
+  if (options.applicationForm && canOpenApplicationForm(job.status)) {
     // Treated as a write so it is disabled while one from this page is still reserving.
-    const open = waterlooWorksButton('Open application form ↗', 'openApplicationForm', job, report); open.dataset.write = '';
-    actions.appendChild(open);
+    const open = menuItem('Open application form ↗', () => void openOnWaterlooWorks('openApplicationForm', job, hooks.report)); open.dataset.write = '';
+    items.push(open);
   }
-  if (job.status === 'review' && job.operation === undefined) {
-    const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'secondary remove-action'; remove.textContent = 'Remove from queue';
-    remove.addEventListener('click', async () => {
+  if (canRemoveJob(job)) {
+    const remove = menuItem('Remove from my list', async () => {
       remove.disabled = true;
-      try {
-        await hostedRequest(`/jobs/${encodeURIComponent(job.jobId)}/remove`, {method: 'POST', body: '{}'});
-        report(`Removed ${job.posting?.title || `posting ${job.jobId}`} from the queue.`); await refresh();
-      } catch (error) { report(error instanceof Error ? error.message : String(error)); remove.disabled = false; }
+      try { await hostedRequest(`/jobs/${encodeURIComponent(job.jobId)}/remove`, {method: 'POST', body: '{}'}); hooks.report(`Removed ${jobTitle(job)}.`); await hooks.refresh(); }
+      catch (error) { hooks.report(error instanceof Error ? error.message : String(error), "error"); remove.disabled = false; }
     });
-    actions.appendChild(remove);
+    remove.classList.add('remove-action'); items.push(remove);
   }
-  card.appendChild(actions); card.appendChild(modal.dialog);
+  return items;
 }

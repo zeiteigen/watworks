@@ -1,3 +1,4 @@
+import type { Tone } from "./hosted-queue.js";
 import { hostedRequest, type HostedWorkspace } from "./hosted-client.js";
 
 const styleNames = { openai: "OpenAI-style", anthropic: "Anthropic-style" } as const;
@@ -14,7 +15,7 @@ export function aiConnectionSummary(ai: HostedWorkspace["ai"]): string {
 }
 
 /** The key only ever travels from this form to the hosted API; it is never read back or kept on the page. */
-export function createAiSettings(root: Document, report: (text: string) => void, refresh: () => Promise<void>): (ai: HostedWorkspace["ai"]) => void {
+export function createAiSettings(root: Document, report: (text: string, tone?: Tone) => void, refresh: () => Promise<void>): (ai: HostedWorkspace["ai"]) => void {
   const form = root.querySelector<HTMLFormElement>("#api-key-form")!;
   const remove = root.querySelector<HTMLButtonElement>("#api-key-remove")!;
   const field = <T extends Element>(name: string) => form.querySelector<T>(`[name="${name}"]`)!;
@@ -34,13 +35,13 @@ export function createAiSettings(root: Document, report: (text: string) => void,
       apiKey.value = "";
       report("API key saved. Searches and letters now use it.");
       await refresh();
-    } catch (error) { report(error instanceof Error ? error.message : String(error)); }
+    } catch (error) { report(error instanceof Error ? error.message : String(error), "error"); }
     finally { save.disabled = false; }
   });
   remove.addEventListener("click", async () => {
     remove.disabled = true;
     try { await hostedRequest("/ai-key/remove", { method: "POST", body: "{}" }); report("API key removed."); await refresh(); }
-    catch (error) { report(error instanceof Error ? error.message : String(error)); }
+    catch (error) { report(error instanceof Error ? error.message : String(error), "error"); }
     finally { remove.disabled = false; }
   });
   let shownKey: string | null = null;

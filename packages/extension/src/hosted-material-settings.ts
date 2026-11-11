@@ -1,10 +1,11 @@
+import type { Tone } from "./hosted-queue.js";
 import { hostedRequest } from "./hosted-client.js";
 import { normalizeReviewMode } from "../../shared/src/resume-changes.js";
 
 interface MaterialPreferences { letterPrompt: string; resumePrompt: string; resumeReview: string; defaultLetterPrompt: string; defaultResumePrompt: string }
 
 /** Writing prompts in Materials. Loaded apart from the queue so polling never replaces what is being edited. */
-export function createMaterialSettings(root: Document, report: (text: string) => void, onSaved: () => void = () => {}): () => Promise<void> {
+export function createMaterialSettings(root: Document, report: (text: string, tone?: Tone) => void, onSaved: () => void = () => {}): () => Promise<void> {
   const form = root.querySelector<HTMLFormElement>("#material-prompts-form")!;
   const field = (name: string) => form.querySelector<HTMLTextAreaElement & HTMLSelectElement>(`[name="${name}"]`)!;
   const letter = field("letterPrompt"), resume = field("resumePrompt"), review = field("resumeReview");

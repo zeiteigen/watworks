@@ -1,9 +1,10 @@
+import type { Tone } from "./hosted-queue.js";
 import { hostedRequest } from "./hosted-client.js";
 
 interface LetterPreferences { template: string; defaultTemplate: string; markers: string[] }
 
 /** Loaded apart from the workspace so queue refreshes never replace what is being edited. */
-export function createLetterSettings(root: Document, report: (text: string) => void): () => Promise<void> {
+export function createLetterSettings(root: Document, report: (text: string, tone?: Tone) => void): () => Promise<void> {
   const form = root.querySelector<HTMLFormElement>("#cover-letter-form")!;
   const template = form.querySelector<HTMLTextAreaElement>('[name="template"]')!;
   const useDefault = root.querySelector<HTMLButtonElement>("#letter-template-default")!;
@@ -16,7 +17,7 @@ export function createLetterSettings(root: Document, report: (text: string) => v
     try {
       await hostedRequest("/cover-letter-preferences", { method: "POST", body: JSON.stringify({ template: template.value }) });
       report(template.value.trim() ? "Cover letter template saved. New letters use your template." : "Cover letter template saved. New letters use the default template.");
-    } catch (error) { report(error instanceof Error ? error.message : String(error)); }
+    } catch (error) { report(error instanceof Error ? error.message : String(error), "error"); }
     finally { save.disabled = false; }
   });
   return async () => {

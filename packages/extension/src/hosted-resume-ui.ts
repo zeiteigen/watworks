@@ -1,10 +1,9 @@
 import { hostedRequest } from './hosted-client.js';
-import { hostedDialog } from './hosted-dialog.js';
-import { hasHostedCoverSlot } from './hosted-letter-ui.js';
 import { changeLocation, markupLink, reviewUnit, reviewUnits, wordDiff, type ResumeChange, type ResumeReviewMode } from '../../shared/src/resume-changes.js';
 import { renderPdf } from './hosted-pdf.js';
 import type { ResumeDocument } from '../../workspace/src/schemas.js';
-import type { HostedJob } from './hosted-queue.js';
+import { approveDocument, hasHostedCoverSlot, type HostedJob, type WriteHooks } from './hosted-queue.js';
+import { button, cachedPdf, menuItem, openHostedFile, text, writeButton, type StepContext, type StepView } from './hosted-step.js';
 
 export interface HostedCustomResume {
   requested: true; draftId?: string; base?: ResumeDocument; changes?: ResumeChange[]; accepted?: string[];
@@ -40,9 +39,6 @@ function choiceState(job: HostedJob, custom: HostedCustomResume): Set<string> {
   choices.set(job.jobId, { draftId: custom.draftId!, hunks }); return hunks;
 }
 
-function text(tag: string, value: string, className?: string): HTMLElement {
-  const node = document.createElement(tag); node.textContent = value; if (className) node.className = className; return node;
-}
 
 const hunksOf = (change: ResumeChange) => change.kind === 'rewrite' ? reviewUnits([change], 'word') : [change.id];
 const kindLabel = (change: ResumeChange) => change.kind === 'add' ? 'Added' : change.kind === 'remove' ? 'Removed' : 'Rewritten';
@@ -95,16 +91,6 @@ export function renderResumeChanges(custom: HostedCustomResume, mode: ResumeRevi
   return list;
 }
 
-/** PDFs already fetched this session: review copies by draft, built resumes by hash. */
-const pdfCache = new Map<string, Promise<Uint8Array>>();
-function cachedPdf(key: string, path: string): Promise<Uint8Array> {
-  let pending = pdfCache.get(key);
-  if (!pending) {
-    pending = hostedRequest<Blob>(path).then(async blob => new Uint8Array(await blob.arrayBuffer()));
-    pdfCache.set(key, pending); pending.catch(() => pdfCache.delete(key));
-  }
-  return pending;
-}
 
 interface Mark { element: HTMLButtonElement; hunk: string; unit: string; change: ResumeChange; side: 'del' | 'ins' }
 
@@ -152,156 +138,134 @@ function paintMarks(marks: Mark[], custom: HostedCustomResume, kept: Set<string>
   }
 }
 
-function previewButton(job: HostedJob, label: string, report: (value: string) => void, tex = false): HTMLButtonElement {
-  const button = document.createElement('button'); button.type = 'button'; button.className = 'secondary'; button.textContent = label;
-  button.addEventListener('click', async () => {
-    button.disabled = true;
-    try {
-      const blob = await hostedRequest<Blob>(`/jobs/${encodeURIComponent(job.jobId)}/custom-resume${tex ? '?tex=1' : ''}`), url = URL.createObjectURL(blob);
-      if (tex) { const link = document.createElement('a'); link.href = url; link.download = `custom-resume-${job.jobId}.tex`; link.click(); }
-      else await chrome.tabs.create({ url });
-      setTimeout(() => URL.revokeObjectURL(url), 300_000);
-    } catch (error) { report(error instanceof Error ? error.message : String(error)); }
-    finally { button.disabled = false; }
-  });
-  return button;
-}
-
 export function customResumeApprovalLabel(job: HostedJob): string {
-  if (hasHostedCoverSlot(job)) return job.coverLetter ? 'Approve custom resume' : 'Approve custom resume and draft cover letter';
-  return 'Approve custom resume and application uploads';
+  if (hasHostedCoverSlot(job)) return job.coverLetter ? 'Approve resume and upload' : 'Approve resume and draft letter';
+  return 'Approve resume and upload';
+}
+function customResumeNext(job: HostedJob): string {
+  return hasHostedCoverSlot(job) && !job.coverLetter ? 'WatWorks writes your cover letter from this resume next. Nothing is sent until you approve it.' : 'This uploads exactly this PDF to WaterlooWorks. Nothing is submitted until your final check.';
 }
 
-/** Custom resume controls for one job card. Uploads still happen only through `approve`. */
-export function appendCustomResume(
-  parent: HTMLElement, job: HostedJob, mode: ResumeReviewMode, refresh: () => void | Promise<void>, report: (value: string) => void,
-  approve: (hash?: string) => Promise<void>, busy: boolean,
-): void {
-  const custom = job.customResume;
-  const canToggle = TOGGLE_STATUSES.includes(job.status) && !(job.coverLetter?.source === 'generated') && !custom?.approved && Boolean(job.resumeId);
-  if (!custom && !canToggle) return;
-  const section = document.createElement('section'); section.className = 'job-detail custom-resume';
-  section.appendChild(text('h4', 'Custom resume'));
-  if (canToggle) {
-    const label = document.createElement('label'), box = document.createElement('input');
-    label.className = 'check-option custom-resume-toggle'; box.type = 'checkbox'; box.checked = Boolean(custom); box.disabled = busy;
-    label.append(box, text('span', 'Send with custom resume'));
-    box.addEventListener('change', async () => {
-      box.disabled = true;
-      try {
-        await hostedRequest(`/jobs/${encodeURIComponent(job.jobId)}/custom-resume`, { method: 'POST', body: JSON.stringify({ enabled: box.checked }) });
-        choices.delete(job.jobId);
-        report(box.checked ? 'A custom resume will be drafted for this job when you approve it.' : 'This job will use the selected base resume.');
-        await refresh();
-      } catch (error) { box.checked = !box.checked; report(error instanceof Error ? error.message : String(error)); }
-      finally { box.disabled = false; }
-    });
-    section.appendChild(label);
-  }
-  const note = (value: string) => section.appendChild(text('p', value, 'meta'));
-  if (!custom) { note('Tailors the selected resume to this posting with your custom resume prompt. You review the changes before anything is uploaded.'); parent.appendChild(section); return; }
-  if (custom.approved) {
-    note(`Approved: ${custom.approved.name}. This version replaces the base resume in the application.`);
-    section.appendChild(previewButton(job, 'Preview approved resume', report));
-    parent.appendChild(section); return;
-  }
-  if (job.status === 'tailoring_resume') { note('Tailoring your resume and typesetting it with LaTeX…'); parent.appendChild(section); return; }
-  if (job.status === 'resume_failed') {
-    note(job.customResumeError || 'The custom resume could not be drafted.');
-    const retry = document.createElement('button'); retry.type = 'button'; retry.dataset.write = ''; retry.textContent = 'Request a new custom resume';
-    retry.addEventListener('click', async () => { retry.disabled = true; try { await approve(); } finally { retry.disabled = false; } });
-    section.appendChild(retry); parent.appendChild(section); return;
-  }
-  if (job.status !== 'resume_review' || !custom.pdf || !custom.changes) { note('A custom version of the selected resume is drafted when you approve this application.'); parent.appendChild(section); return; }
+/** Whether the job can still switch between its base resume and a tailored one. */
+export function canTailorResume(job: HostedJob): boolean {
+  return TOGGLE_STATUSES.includes(job.status) && job.coverLetter?.source !== 'generated' && !job.customResume?.approved && Boolean(job.resumeId);
+}
+async function setCustomResume(job: HostedJob, enabled: boolean, hooks: WriteHooks): Promise<void> {
+  await hostedRequest(`/jobs/${encodeURIComponent(job.jobId)}/custom-resume`, { method: 'POST', body: JSON.stringify({ enabled }) });
+  choices.delete(job.jobId);
+  hooks.report(enabled ? 'WatWorks will tailor your resume for this job when you continue.' : 'This job will use your base resume.');
+  await hooks.refresh();
+}
+/** "Tailor it for this job": nothing is drafted until the application is approved. */
+export function customResumeToggle(job: HostedJob, hooks: WriteHooks, busy: boolean): HTMLElement | null {
+  if (!canTailorResume(job)) return null;
+  const label = document.createElement('label'), box = document.createElement('input');
+  label.className = 'check-option custom-resume-toggle'; box.type = 'checkbox'; box.checked = Boolean(job.customResume); box.disabled = busy;
+  label.append(box, text('span', 'Tailor it for this job'));
+  box.addEventListener('change', async () => {
+    box.disabled = true;
+    try { await setCustomResume(job, box.checked, hooks); }
+    catch (error) { box.checked = !box.checked; hooks.report(error instanceof Error ? error.message : String(error), "error"); }
+    finally { box.disabled = false; }
+  });
+  return label;
+}
+function useBaseResume(job: HostedJob, hooks: WriteHooks): HTMLButtonElement[] {
+  return canTailorResume(job) ? [menuItem('Use my base resume instead', () => void setCustomResume(job, false, hooks).catch(error => hooks.report(error instanceof Error ? error.message : String(error), "error")))] : [];
+}
 
+/**
+ * The tailored resume opens on the PDF itself: every proposed change is drawn in place and
+ * clicking one keeps or drops it. Choices are applied (a rebuild, never a WaterlooWorks write)
+ * before the exact clean PDF can be approved.
+ */
+export function resumeStep(job: HostedJob, ctx: StepContext): StepView {
+  const custom = job.customResume!, hooks = ctx.hooks, mode = ctx.reviewMode;
+  const path = `/jobs/${encodeURIComponent(job.jobId)}/custom-resume`, body = document.createElement('div'); body.className = 'resume-step';
+  const menu = useBaseResume(job, hooks);
+  if (job.status === 'resume_failed' || !custom.pdf || !custom.changes) {
+    body.append(text('p', 'Your tailored resume couldn’t be built:', 'meta'), text('pre', job.customResumeError || 'No reason was given.', 'error-box'));
+    return { body, primary: writeButton('Try again', () => ctx.act(() => approveDocument(job, hooks, {}))), help: 'Or send your base resume from ⋯.', menu };
+  }
+  menu.push(menuItem('Download LaTeX source', () => void openHostedFile(`${path}?tex=1`, hooks.report, `custom-resume-${job.jobId}.tex`)));
+  menu.push(menuItem('Open the PDF in a new tab', () => void openHostedFile(path, hooks.report)));
   const changes = custom.changes;
+  // Reads the hash at click time: applying choices replaces the PDF without a re-render.
+  const doApprove = () => ctx.act(() => approveDocument(job, hooks, { customResumeHash: custom.pdf!.sha256 }));
+  const final = document.createElement('div'); final.className = 'pdf-review document';
+  let finalShown: string | undefined;
+  const loadFinal = () => {
+    const sha = custom.pdf!.sha256;
+    if (finalShown === sha) return;
+    finalShown = sha; final.replaceChildren(text('p', 'Loading your resume…', 'meta pdf-loading'));
+    void cachedPdf(`pdf:${sha}`, path).then(async bytes => { final.replaceChildren(); await renderPdf(final, bytes, 'Your tailored resume'); })
+      .catch(error => { finalShown = undefined; final.replaceChildren(text('p', `The PDF could not be shown here: ${error instanceof Error ? error.message : String(error)}`, 'meta pdf-loading')); });
+  };
+  if (!changes.length) {
+    body.append(text('p', 'No changes were needed for this posting. This is the resume that will be sent.', 'meta'), final); loadFinal();
+    return { body, primary: writeButton(customResumeApprovalLabel(job), doApprove), help: customResumeNext(job), menu, wide: true };
+  }
+
   let applied = expand(changes, custom.accepted ?? []);
   const kept = choiceState(job, custom), dirty = () => !same(kept, applied);
-  note(changes.length ? `${changes.length} ${changes.length === 1 ? 'change' : 'changes'} from your base resume. Review them on the marked-up PDF, keep or drop each one, apply your choices, then approve.` : 'No changes were needed for this posting. Preview the PDF, then approve it or send the base resume.');
-  const actions = document.createElement('div'); actions.className = 'actions';
-  // With changes, the preview is the marked-up PDF below; the plain build stays one tab away in it.
-  if (!changes.length) actions.appendChild(previewButton(job, 'Preview custom resume PDF', report));
-  actions.appendChild(previewButton(job, 'Download LaTeX source', report, true));
-  section.appendChild(actions);
-  if (changes.length) {
-    const body = document.createElement('div'); body.className = 'resume-review';
-    const modal = hostedDialog('Review custom resume changes', body); modal.dialog.classList.add('wide');
-    const tabs = document.createElement('div'), showMarked = document.createElement('button'), showFinal = document.createElement('button');
-    tabs.className = 'review-tabs'; tabs.setAttribute('role', 'group'); tabs.setAttribute('aria-label', 'Preview');
-    for (const [button, label] of [[showMarked, 'Changes marked'], [showFinal, 'Final PDF']] as const) { button.type = 'button'; button.className = 'secondary'; button.textContent = label; tabs.appendChild(button); }
-    const hint = text('p', mode === 'word'
-      ? 'Click a highlighted edit on the page, or in the list, to keep or drop it. Each edited phrase is its own choice.'
-      : 'Click a highlighted change on the page, or in the list, to keep or drop it.', 'meta');
-    const legend = document.createElement('p'); legend.className = 'review-legend meta';
-    legend.append(text('span', 'New text', 'legend-ins'), text('span', 'Removed text', 'legend-del'), text('span', 'Faded: not in the final resume', 'legend-off'));
-    const grid = document.createElement('div'), marked = document.createElement('div'), final = document.createElement('div'), side = document.createElement('div');
-    grid.className = 'resume-review-grid'; marked.className = 'pdf-review'; final.className = 'pdf-review'; final.hidden = true; side.className = 'resume-review-list';
-    grid.append(marked, final, side);
-    const status = text('p', '', 'meta'); status.setAttribute('role', 'status');
-    const apply = document.createElement('button'); apply.type = 'button'; apply.textContent = 'Apply my choices';
-    const footer = document.createElement('div'); footer.className = 'review-footer'; footer.append(status, apply);
-    body.append(tabs, hint, legend, grid, footer);
+  const keptCount = () => changes.filter(change => hunksOf(change).some(id => kept.has(id))).length;
+  const hint = text('p', mode === 'word' ? 'Click a highlighted edit to keep or drop it.' : 'Click a highlighted change to keep or drop it.', 'meta review-hint');
+  const count = text('p', '', 'review-count');
+  const marked = document.createElement('div'); marked.className = 'pdf-review document';
+  const list = document.createElement('div'); list.className = 'resume-review-list'; list.hidden = true;
+  final.hidden = true;
+  const view = button('See the clean PDF', () => show(final.hidden ? 'final' : 'marked'), 'link view-toggle');
+  body.append(hint, count, marked, final, list, view);
+  const primary = document.createElement('button'); primary.type = 'button';
+  const helpLine = { text: '' };
 
-    let marks: Mark[] = [], loaded: Promise<void> | undefined, finalShown: string | undefined;
-    const focus = (changeId: string | null) => {
-      for (const mark of marks) mark.element.classList.toggle('focus', mark.change.id === changeId);
-      for (const row of side.querySelectorAll<HTMLElement>('[data-change]')) row.classList.toggle('focus', row.dataset.change === changeId);
-    };
-    const draw = () => {
-      side.replaceChildren(renderResumeChanges(custom, mode, kept, draw, focus));
-      paintMarks(marks, custom, kept);
-      apply.disabled = !dirty();
-      status.textContent = dirty() ? 'You have choices that are not in the final PDF yet.' : 'The final PDF matches these choices.';
-    };
-    const toggle = (unit: string) => { toggleUnit(changes, kept, unit); draw(); };
-    const loadMarked = () => loaded ??= (async () => {
-      marked.replaceChildren(text('p', 'Loading the resume with changes marked…', 'meta pdf-loading'));
-      try {
-        marks = await drawMarkedPdf(marked, custom, mode, job.jobId, toggle, focus); draw();
-        // A server without review copies answers with the plain build, which has no change links.
-        if (!marks.length) marked.prepend(text('p', 'This preview has no changes marked in it, so the WatWorks server has not been updated yet. Keep or drop changes in the list for now.', 'meta pdf-loading'));
-      }
-      catch (error) {
-        loaded = undefined;
-        marked.replaceChildren(text('p', `The marked-up PDF could not be shown: ${error instanceof Error ? error.message : String(error)} You can still keep or drop each change in the list.`, 'meta pdf-loading'));
-      }
-    })();
-    const loadFinal = async () => {
-      const sha = custom.pdf!.sha256;
-      if (finalShown === sha) return;
-      finalShown = sha; final.replaceChildren(text('p', 'Loading the final PDF…', 'meta pdf-loading'));
-      try { const bytes = await cachedPdf(`pdf:${sha}`, `/jobs/${encodeURIComponent(job.jobId)}/custom-resume`); final.replaceChildren(); await renderPdf(final, bytes, 'Final custom resume'); }
-      catch (error) { finalShown = undefined; final.replaceChildren(text('p', `The final PDF could not be shown: ${error instanceof Error ? error.message : String(error)}`, 'meta pdf-loading')); }
-    };
-    const show = (which: 'marked' | 'final') => {
-      marked.hidden = which !== 'marked'; final.hidden = which !== 'final';
-      showMarked.setAttribute('aria-pressed', String(which === 'marked')); showFinal.setAttribute('aria-pressed', String(which === 'final'));
-      hint.hidden = legend.hidden = which !== 'marked';
-      void (which === 'marked' ? loadMarked() : loadFinal());
-    };
-    showMarked.addEventListener('click', () => show('marked')); showFinal.addEventListener('click', () => show('final'));
-    apply.addEventListener('click', async () => {
-      apply.disabled = true; status.textContent = 'Rebuilding your resume…';
-      try {
-        const result = await hostedRequest<{ customResume: HostedCustomResume }>(`/jobs/${encodeURIComponent(job.jobId)}/custom-resume/choices`, { method: 'POST', body: JSON.stringify({ draftId: custom.draftId, accepted: compact(changes, kept) }) });
-        // The card re-renders when the dialog closes; until then the approval below must use the new build.
-        if (result.customResume.pdf) custom.pdf = result.customResume.pdf;
-        custom.accepted = result.customResume.accepted ?? []; applied = expand(changes, custom.accepted ?? []);
-        draw(); status.textContent = 'Applied. This is the final PDF. Close this window to approve it.'; show('final');
-        report('Custom resume rebuilt with your choices. Check the final PDF, then approve it.'); await refresh();
-      } catch (error) { status.textContent = error instanceof Error ? error.message : String(error); apply.disabled = !dirty(); }
-    });
-    draw();
-    const open = document.createElement('button'); open.type = 'button'; open.className = 'secondary'; open.setAttribute('aria-haspopup', 'dialog');
-    const keptCount = changes.filter(change => hunksOf(change).some(id => applied.has(id))).length;
-    open.textContent = `Preview PDF with changes marked (${keptCount}/${changes.length} kept)`;
-    open.addEventListener('click', () => { draw(); modal.open(); show('marked'); });
-    actions.appendChild(open); section.appendChild(modal.dialog);
-  }
-  if (dirty()) note('Your unapplied choices are not in the PDF yet. Open the PDF preview and apply them before approving.');
-  const approveButton = document.createElement('button'); approveButton.type = 'button'; approveButton.dataset.write = ''; approveButton.textContent = customResumeApprovalLabel(job);
-  approveButton.disabled = dirty();
-  approveButton.addEventListener('click', async () => { approveButton.disabled = true; try { await approve(custom.pdf!.sha256); } finally { approveButton.disabled = dirty(); } });
-  section.appendChild(approveButton);
-  parent.appendChild(section);
+  let marks: Mark[] = [];
+  const focus = (changeId: string | null) => {
+    for (const mark of marks) mark.element.classList.toggle('focus', mark.change.id === changeId);
+    for (const row of list.querySelectorAll<HTMLElement>('[data-change]')) row.classList.toggle('focus', row.dataset.change === changeId);
+  };
+  const draw = () => {
+    if (!list.hidden) list.replaceChildren(renderResumeChanges(custom, mode, kept, draw, focus));
+    paintMarks(marks, custom, kept);
+    count.textContent = `${keptCount()} of ${changes.length} ${changes.length === 1 ? 'change' : 'changes'} kept${dirty() ? ' · not in the PDF yet' : ''}`;
+    // One primary: rebuild first when the choices changed, then approve that exact PDF.
+    const rebuild = dirty();
+    primary.textContent = rebuild ? 'Apply my choices' : customResumeApprovalLabel(job);
+    if (rebuild) delete primary.dataset.write; else primary.dataset.write = '';
+    const help = card()?.querySelector<HTMLElement>('.step-help');
+    helpLine.text = rebuild ? 'Applying rebuilds the PDF with your choices. Nothing is sent.' : customResumeNext(job);
+    if (help) help.textContent = helpLine.text;
+  };
+  const card = () => body.closest<HTMLElement>('.task-card');
+  const toggle = (unit: string) => { toggleUnit(changes, kept, unit); draw(); };
+  const showList = () => { list.hidden = false; draw(); list.scrollIntoView?.({ block: 'nearest' }); };
+  menu.unshift(menuItem('Show the changes as a list', showList));
+  const show = (which: 'marked' | 'final') => {
+    marked.hidden = which !== 'marked'; final.hidden = which !== 'final'; hint.hidden = which !== 'marked';
+    view.textContent = which === 'marked' ? 'See the clean PDF' : 'See the changes';
+    if (which === 'final') loadFinal();
+  };
+  marked.replaceChildren(text('p', 'Loading your resume with the changes marked…', 'meta pdf-loading'));
+  void drawMarkedPdf(marked, custom, mode, job.jobId, toggle, focus).then(found => {
+    marks = found; draw();
+    // A server without review copies answers with the plain build, which has no change links.
+    if (!marks.length) { marked.prepend(text('p', 'This PDF has no changes marked on it. Keep or drop them in the list instead.', 'meta pdf-loading')); showList(); }
+  }).catch(error => {
+    marked.replaceChildren(text('p', `The marked-up PDF could not be shown: ${error instanceof Error ? error.message : String(error)} Keep or drop changes in the list instead.`, 'meta pdf-loading'));
+    showList();
+  });
+  primary.addEventListener('click', async () => {
+    if (!dirty()) { doApprove(); return; }
+    primary.disabled = true; count.textContent = 'Rebuilding your resume…';
+    try {
+      const result = await hostedRequest<{ customResume: HostedCustomResume }>(`${path}/choices`, { method: 'POST', body: JSON.stringify({ draftId: custom.draftId, accepted: compact(changes, kept) }) });
+      // The approval below must name the new build, even before the next refresh arrives.
+      if (result.customResume.pdf) custom.pdf = result.customResume.pdf;
+      custom.accepted = result.customResume.accepted ?? []; applied = expand(changes, custom.accepted);
+      show('final'); hooks.report('Resume rebuilt with your choices. Check it, then approve it.');
+    } catch (error) { hooks.report(error instanceof Error ? error.message : String(error), "error"); }
+    finally { primary.disabled = false; draw(); }
+  });
+  draw();
+  return { body, primary, help: helpLine.text, menu, wide: true };
 }

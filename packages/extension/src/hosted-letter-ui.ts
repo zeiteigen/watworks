@@ -1,61 +1,68 @@
-import { hostedRequest } from './hosted-client.js';
-import type { HostedJob } from './hosted-queue.js';
-export function hasHostedCoverSlot(job:HostedJob):boolean{
-  const requirements=job.form?.requirements;
-  return Array.isArray(requirements)&&requirements.some(slot=>slot.role==='attachment'&&(slot.typeId==='66'||/^cover\s*letter$/i.test(slot.label??'')));
-}
-export function hostedPreparationMessage(status?:string,detail?:string):string{
-  if(status==='resume_review')return 'Custom resume ready. Review its changes and PDF, then approve it.';
-  if(status==='resume_failed')return detail||'The custom resume could not be drafted. Request a new one or send the base resume.';
-  if(status==='cover_letter_review')return 'Cover letter ready. Review its PDF or upload your own, then approve it.';
-  if(status==='confirm_required')return 'Application prepared. Review the processed documents in Ready to submit before confirming.';
-  if(status==='cover_letter_failed')return detail||'The cover letter could not be drafted. Upload your own PDF or request a new draft.';
-  return 'The outcome needs checking. See Needs review before taking another action.';
-}
+import type { Tone } from "./hosted-queue.js";
+import { hostedRequest } from "./hosted-client.js";
+import { approveDocument, type HostedJob, type WriteHooks } from "./hosted-queue.js";
+import { renderPdf } from "./hosted-pdf.js";
+import { cachedPdf, menuItem, openHostedFile, text, writeButton, type StepContext, type StepView } from "./hosted-step.js";
+
 /** Kept across re-renders: rebuilding the input would discard a file the user has already picked. */
-const uploadForms=new Map<string,HTMLFormElement>();
-function letterUploadForm(job:HostedJob,refresh:()=>void,report:(value:string)=>void):HTMLFormElement{
-  const existing=uploadForms.get(job.jobId);
-  if(existing){const submit=existing.querySelector<HTMLButtonElement>('button[type=submit]')!;submit.disabled=existing.dataset.uploading==='true';return existing;}
-  const form=document.createElement('form'),label=document.createElement('label'),input=document.createElement('input'),upload=document.createElement('button');
-  form.className='resume-upload';label.textContent='Use your own cover letter';input.type='file';input.accept='application/pdf,.pdf';input.required=true;label.appendChild(input);upload.type='submit';upload.dataset.write='';upload.textContent='Upload my PDF';form.append(label,upload);
-  form.addEventListener('submit',async event=>{event.preventDefault();const file=input.files?.[0];if(!file)return;
-    if(file.size>=5_000_000){report('Choose a PDF smaller than 5 MB.');return;}upload.disabled=true;form.dataset.uploading='true';
-    try{const bytes=new Uint8Array(await file.arrayBuffer());let binary='';for(let i=0;i<bytes.length;i+=0x8000)binary+=String.fromCharCode(...bytes.subarray(i,i+0x8000));
-      await hostedRequest(`/jobs/${encodeURIComponent(job.jobId)}/cover-letter`,{method:'POST',body:JSON.stringify({name:file.name,base64:btoa(binary)})});uploadForms.delete(job.jobId);report('Cover letter uploaded. Preview it, then approve it.');await refresh();
-    }catch(error){report(error instanceof Error?error.message:String(error));upload.disabled=false;}
-    finally{delete form.dataset.uploading;}
+const uploadForms = new Map<string, HTMLFormElement>();
+export function letterUploadForm(job: HostedJob, hooks: WriteHooks): HTMLFormElement {
+  const existing = uploadForms.get(job.jobId);
+  if (existing) { const submit = existing.querySelector<HTMLButtonElement>("button[type=submit]")!; submit.disabled = existing.dataset.uploading === "true"; return existing; }
+  const form = document.createElement("form"), label = document.createElement("label"), input = document.createElement("input"), upload = document.createElement("button");
+  form.className = "letter-upload"; label.textContent = "Use your own cover letter (PDF, under 5 MB)"; input.type = "file"; input.accept = "application/pdf,.pdf"; input.required = true; label.appendChild(input);
+  upload.type = "submit"; upload.dataset.write = ""; upload.className = "secondary"; upload.textContent = "Upload my PDF"; form.append(label, upload);
+  form.addEventListener("submit", async event => {
+    event.preventDefault(); const file = input.files?.[0]; if (!file) return;
+    if (file.size >= 5_000_000) { hooks.report("Choose a PDF smaller than 5 MB."); return; }
+    upload.disabled = true; form.dataset.uploading = "true";
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer()); let binary = "";
+      for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      await hostedRequest(`/jobs/${encodeURIComponent(job.jobId)}/cover-letter`, { method: "POST", body: JSON.stringify({ name: file.name, base64: btoa(binary) }) });
+      uploadForms.delete(job.jobId); hooks.report("Cover letter uploaded. Read it, then approve it."); await hooks.refresh();
+    } catch (error) { hooks.report(error instanceof Error ? error.message : String(error), "error"); upload.disabled = false; }
+    finally { delete form.dataset.uploading; }
   });
-  uploadForms.set(job.jobId,form);return form;
+  uploadForms.set(job.jobId, form); return form;
 }
-export function appendHostedLetter(card:HTMLElement,job:HostedJob,refresh:()=>void,report:(value:string)=>void,approve:(hash?:string)=>Promise<void>):void{
-  if(!hasHostedCoverSlot(job)&&!job.coverLetter)return;
-  const section=document.createElement('section');section.className='job-detail';
-  const heading=document.createElement('h4');heading.textContent='Cover letter';section.appendChild(heading);
-  const note=document.createElement('p');note.className='meta';
-  note.textContent=job.status==='cover_letter_failed'&&job.coverLetterError?job.coverLetterError:job.status==='drafting_cover_letter'?'Drafting and typesetting your letter with LaTeX…':job.coverLetter?'Review the PDF before approving it. You can replace it with your own PDF before uploads begin.':'A letter is drafted only after you approve this application. You can also supply your own PDF.';
-  section.appendChild(note);
-  const preview=(label:string,query='')=>{
-    const button=document.createElement('button');button.type='button';button.className='secondary';button.textContent=label;
-    button.addEventListener('click',async()=>{button.disabled=true;try{
-      const blob=await hostedRequest<Blob>(`/jobs/${encodeURIComponent(job.jobId)}/cover-letter${query}`);
-      const url=URL.createObjectURL(blob);if(query==='?tex=1'){
-        const link=document.createElement('a');link.href=url;link.download=`cover-letter-${job.jobId}.tex`;link.click();
-      }else await chrome.tabs.create({url});setTimeout(()=>URL.revokeObjectURL(url),300000);
-    }catch(error){report(error instanceof Error?error.message:String(error));}finally{button.disabled=false;}});section.appendChild(button);
+/** Forgets a picked file once the job can no longer take one. */
+export function forgetLetterUpload(job: HostedJob): void {
+  if (!["review", "cover_letter_review", "cover_letter_failed"].includes(job.status)) uploadForms.delete(job.jobId);
+}
+
+/** Draws a hosted PDF into `pane`, or explains why it could not, with a way to open it instead. */
+export function showPdf(pane: HTMLElement, key: string, path: string, label: string, report: (value: string, tone?: Tone) => void): void {
+  pane.replaceChildren(text("p", `Loading ${label.toLowerCase()}…`, "meta pdf-loading"));
+  void cachedPdf(key, path).then(async bytes => { pane.replaceChildren(); await renderPdf(pane, bytes, label); }).catch(error => {
+    const open = document.createElement("button"); open.type = "button"; open.className = "link"; open.textContent = "Open the PDF in a new tab";
+    open.addEventListener("click", () => void openHostedFile(path, report));
+    pane.replaceChildren(text("p", `${label} could not be shown here: ${error instanceof Error ? error.message : String(error)}`, "meta pdf-loading"), open);
+  });
+}
+
+/** Read the letter itself, then approve that exact revision. A failed draft offers a new one or your own PDF. */
+export function letterStep(job: HostedJob, ctx: StepContext): StepView {
+  const body = document.createElement("div"); body.className = "letter-step";
+  const path = `/jobs/${encodeURIComponent(job.jobId)}/cover-letter`, report = ctx.hooks.report;
+  const upload = document.createElement("div"); upload.className = "upload-slot"; upload.hidden = true;
+  const showUpload = () => { upload.replaceChildren(letterUploadForm(job, ctx.hooks)); upload.hidden = false; upload.querySelector("input")?.focus(); };
+  const menu = [menuItem("Upload my own PDF instead", showUpload)];
+  const letter = job.coverLetter;
+  if (job.status !== "cover_letter_review" || !letter) {
+    body.append(text("p", "The cover letter couldn't be built:", "meta"), text("pre", job.coverLetterError || job.reason || "No reason was given.", "error-box"), upload);
+    const retry = writeButton("Ask for a new draft", () => ctx.act(() => approveDocument(job, ctx.hooks, {})));
+    return { body, primary: retry, help: "You can fix your template in Setup first, or upload your own PDF from ⋯.", menu };
+  }
+  const pane = document.createElement("div"); pane.className = "pdf-review document";
+  body.append(pane, upload);
+  showPdf(pane, `letter:${letter.sha256}`, path, "Your cover letter", report);
+  if (letter.texKey) menu.push(menuItem("Download LaTeX source", () => void openHostedFile(`${path}?tex=1`, report, `cover-letter-${job.jobId}.tex`)));
+  menu.push(menuItem("Open the PDF in a new tab", () => void openHostedFile(path, report)));
+  const tailorNext = Boolean(job.customResume && !job.customResume.approved);
+  const approve = writeButton(tailorNext ? "Approve letter and tailor resume" : "Approve letter and upload", () => ctx.act(() => approveDocument(job, ctx.hooks, { coverLetterHash: letter.sha256 })));
+  return {
+    body, primary: approve, menu, wide: true,
+    help: tailorNext ? "WatWorks tailors your resume next. Nothing is sent until you approve it." : "This uploads your resume and this letter to WaterlooWorks. Nothing is submitted until your final check.",
   };
-  if(job.coverLetter){preview('Preview cover letter PDF');if(job.coverLetter.texKey)preview('Download LaTeX source','?tex=1');}
-  if(job.processedCoverLetter)preview('Preview processed cover letter','?processed=1');
-  if(['review','cover_letter_review','cover_letter_failed'].includes(job.status)){
-    section.appendChild(letterUploadForm(job,refresh,report));
-  }else uploadForms.delete(job.jobId);
-  if(job.status==='cover_letter_review'&&job.coverLetter){
-    const button=document.createElement('button');button.type='button';button.dataset.write='';button.textContent=job.customResume&&!job.customResume.approved?'Approve cover letter and tailor resume':'Approve cover letter and application uploads';
-    button.addEventListener('click',async()=>{button.disabled=true;try{await approve(job.coverLetter!.sha256);}finally{button.disabled=false;}});section.appendChild(button);
-  }
-  if(job.status==='cover_letter_failed'){
-    const button=document.createElement('button');button.type='button';button.dataset.write='';button.textContent='Request a new LaTeX draft';
-    button.addEventListener('click',async()=>{button.disabled=true;try{await approve();}finally{button.disabled=false;}});section.appendChild(button);
-  }
-  card.appendChild(section);
 }

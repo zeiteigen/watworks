@@ -1,46 +1,38 @@
-import {expect,test} from 'bun:test';
-import {parseHTML} from 'linkedom';
-import {appendHostedLetter} from './hosted-letter-ui.js';
+import { expect, test } from "bun:test";
+import { letterStep, letterUploadForm } from "./hosted-letter-ui.js";
+import type { HostedJob } from "./hosted-queue.js";
+import type { StepContext } from "./hosted-step.js";
+import { withDom } from "./hosted-test-dom.js";
 
-test('letter review offers preview, replacement and approval while discovery does not draft',()=>{
-  const dom=parseHTML('<main><article></article></main>'),previous=Object.getOwnPropertyDescriptor(globalThis,'document');
-  Object.defineProperty(globalThis,'document',{configurable:true,value:dom.document});
-  try{
-    const card=dom.document.querySelector('article') as unknown as HTMLElement;
-    const job={jobId:'1',status:'review',form:{requirements:[{id:'letter',typeId:'66',role:'attachment',label:'Cover letter'}]}};
-    let approved=0;
-    appendHostedLetter(card,job,()=>{},()=>{},async()=>{approved++;});
-    expect(approved).toBe(0);expect(card.textContent).toContain('only after you approve');expect(card.textContent).toContain('Upload my PDF');
-    card.replaceChildren();appendHostedLetter(card,{...job,status:'cover_letter_review',coverLetter:{sha256:'a'.repeat(64),name:'letter.pdf',texKey:'source'}},()=>{},()=>{},async hash=>{expect(hash).toBe('a'.repeat(64));approved++;});
-    expect(card.textContent).toContain('Preview cover letter PDF');expect(card.textContent).toContain('Download LaTeX source');expect(card.textContent).toContain('Approve cover letter and application uploads');
-    expect(approved).toBe(0);
-    card.replaceChildren();appendHostedLetter(card,{...job,status:'drafting_cover_letter'},()=>{},()=>{},async()=>{approved++;});
-    expect(card.querySelector('form')).toBeNull();expect(card.querySelector('button')).toBeNull();expect(approved).toBe(0);
-  }finally{if(previous)Object.defineProperty(globalThis,'document',previous);else Reflect.deleteProperty(globalThis,'document');}
-});
+const slot = { requirements: [{ id: "letter", typeId: "66", role: "attachment", label: "Cover letter" }] };
+const hooks = { refresh: () => {}, report: () => {}, progress: () => {} };
+function context(started: Array<() => Promise<void>>): StepContext { return { hooks, resumes: [], reviewMode: "line", act: write => { started.push(write); } }; }
 
-test('a picked cover letter survives a queue re-render, and a finished upload starts clean',()=>{
-  const dom=parseHTML('<main><article></article></main>'),previous=Object.getOwnPropertyDescriptor(globalThis,'document');
-  Object.defineProperty(globalThis,'document',{configurable:true,value:dom.document});
-  try{
-    const card=dom.document.querySelector('article') as unknown as HTMLElement;
-    const job={jobId:'keep',status:'review',form:{requirements:[{id:'letter',typeId:'66',role:'attachment',label:'Cover letter'}]}};
-    const render=(status=job.status)=>{card.replaceChildren();appendHostedLetter(card,{...job,status},()=>{},()=>{},async()=>{});return card.querySelector('input[type=file]');};
-    const input=render();
-    expect(input).not.toBeNull();expect(render()).toBe(input);
-    (card.querySelector('button[type=submit]') as unknown as HTMLButtonElement).disabled=true;
-    render();expect((card.querySelector('button[type=submit]') as unknown as HTMLButtonElement).disabled).toBe(false);
-    expect(render('drafting_cover_letter')).toBeNull();
-    expect(render()).not.toBe(input);
-  }finally{if(previous)Object.defineProperty(globalThis,'document',previous);else Reflect.deleteProperty(globalThis,'document');}
-});
+test("the letter is read in place and its approval names that exact revision", () => withDom("<main></main>", () => {
+  const started: Array<() => Promise<void>> = [];
+  const job: HostedJob = { jobId: "1", status: "cover_letter_review", form: slot, coverLetter: { sha256: "a".repeat(64), name: "letter.pdf", texKey: "source" } };
+  const step = letterStep(job, context(started));
+  expect(step.body.querySelector(".pdf-review")).not.toBeNull();
+  expect(step.primary!.textContent).toBe("Approve letter and upload");
+  expect(step.primary!.hasAttribute("data-write")).toBe(true);
+  expect(step.menu!.map(item => item.textContent)).toEqual(["Upload my own PDF instead", "Download LaTeX source", "Open the PDF in a new tab"]);
+  expect(started.length).toBe(0);
+  step.primary!.click();
+  expect(started.length).toBe(1);
+  const tailored = letterStep({ ...job, customResume: { requested: true } }, context([]));
+  expect(tailored.primary!.textContent).toBe("Approve letter and tailor resume");
+}));
 
-test('a failed draft shows the reason saved on the job',()=>{
-  const dom=parseHTML('<main><article></article></main>'),previous=Object.getOwnPropertyDescriptor(globalThis,'document');
-  Object.defineProperty(globalThis,'document',{configurable:true,value:dom.document});
-  try{
-    const card=dom.document.querySelector('article') as unknown as HTMLElement;
-    appendHostedLetter(card,{jobId:'failed',status:'cover_letter_failed',coverLetterError:'Your LaTeX template could not be compiled.',form:{requirements:[{id:'letter',typeId:'66',role:'attachment',label:'Cover letter'}]}},()=>{},()=>{},async()=>{});
-    expect(card.textContent).toContain('Your LaTeX template could not be compiled.');
-  }finally{if(previous)Object.defineProperty(globalThis,'document',previous);else Reflect.deleteProperty(globalThis,'document');}
-});
+test("a failed draft shows its reason and offers a new draft, never an approval", () => withDom("<main></main>", () => {
+  const step = letterStep({ jobId: "failed", status: "cover_letter_failed", coverLetterError: "Your LaTeX template could not be compiled.", form: slot }, context([]));
+  expect(step.body.textContent).toContain("Your LaTeX template could not be compiled.");
+  expect(step.primary!.textContent).toBe("Ask for a new draft");
+}));
+
+test("a picked cover letter survives a re-render", () => withDom("<main></main>", () => {
+  const job: HostedJob = { jobId: "keep", status: "review", form: slot };
+  const form = letterUploadForm(job, hooks);
+  expect(letterUploadForm(job, hooks)).toBe(form);
+  form.querySelector<HTMLButtonElement>("button[type=submit]")!.disabled = true;
+  expect(letterUploadForm(job, hooks).querySelector<HTMLButtonElement>("button[type=submit]")!.disabled).toBe(false);
+}));
