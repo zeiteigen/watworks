@@ -30,6 +30,20 @@ Applying and scheduled discovery require a configured [submission service](docs/
 Local research and document preparation use your signed-in browser.
 Agents must never approve applications or operate dashboard approval controls.
 
+## Updating
+
+```sh
+bun run update
+```
+
+This downloads the latest version, reinstalls dependencies and rebuilds
+`dist/packages/extension`. It stops without changing anything if you edited
+tracked files, and never touches `data/`. Afterwards, reload **WaterlooWorks
+Workspace** in `chrome://extensions` (reloading a WaterlooWorks tab is not
+enough) and restart Claude Code or Codex. Wait until no application is uploading
+or submitting first. `bun run update -- --no-pull` rebuilds without downloading;
+`--latex` also refreshes LaTeX.
+
 ## Development
 
 ```sh

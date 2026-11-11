@@ -11,6 +11,7 @@
     "verify:release": "bun scripts/verify-release.ts",
     "start:mcp": "bun packages/mcp-server/src/cli.ts",
     "setup": "bun scripts/setup.ts",
+    "update": "bun scripts/update.ts",
     "dashboard": "bun packages/mcp-server/src/cli.ts --dashboard",
     "install:native-host": "bun packages/mcp-server/src/cli.ts --install-native-host",
     "build": "bun run typecheck && bun run build:extension",

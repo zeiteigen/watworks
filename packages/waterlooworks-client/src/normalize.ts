@@ -325,7 +325,9 @@ export interface ParsedPostingOverview {
 export function parsePostingOverviewHtml(html: string): ParsedPostingOverview {
   const text = htmlToText(html);
   const labelPattern = OVERVIEW_LABELS.map(escapeRegExp).join("|");
-  const expression = new RegExp(`(?:^|\\n)[ \t]*(${labelPattern})\\s*:\\s*`, "gi");
+  // Only horizontal space after the colon: consuming the newline would hide the next label
+  // when a field is empty (an empty "Additional Application Information" swallowed "Application Method").
+  const expression = new RegExp(`(?:^|\\n)[ \t]*(${labelPattern})\\s*:[ \t]*`, "gi");
   const matches: Array<{ label: string; labelStart: number; valueStart: number }> = [];
   for (const match of text.matchAll(expression)) {
     const label = match[1];

@@ -1,6 +1,6 @@
 import { readAccountEmail } from "./account-email.js";
 import { applicationsNavigation } from "./applications-navigation.js";
-import { PDFDocument } from "pdf-lib";
+import { assertReadableStoredPdf } from "./stored-pdf.js";
 import { applicationReadEvidence } from "./application-read-evidence.js";
 import { sha256 } from "../../shared/src/sha256.js";
 import { WATERLOOWORKS_ORIGIN } from "../../shared/src/protocol.js";
@@ -205,13 +205,7 @@ export class BrowserApplicationReads {
     let binary: string;
     try { binary = atob(data.doc.replace(/[\r\n]/g, "")); } catch { throw new ProtocolChangedError("Document PDF could not be read"); }
     const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-    const prefix = new TextDecoder("ascii").decode(bytes.subarray(0, 8));
-    const suffix = new TextDecoder("latin1").decode(bytes.subarray(-1024));
-    if (!prefix.startsWith("%PDF-") || !suffix.includes("%%EOF")) throw new ProtocolChangedError("Stored document is not a readable PDF");
-    try {
-      const pdf = await PDFDocument.load(bytes, { throwOnInvalidObject: true });
-      if (pdf.isEncrypted || pdf.getPageCount() < 1) throw new Error("Unreadable PDF");
-    } catch { throw new ProtocolChangedError("Stored document is not a readable PDF"); }
+    await assertReadableStoredPdf(bytes);
     return { document: { ...document, revision: sha256(bytes) }, bytes };
   }
 

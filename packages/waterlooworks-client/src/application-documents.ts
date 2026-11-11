@@ -1,4 +1,4 @@
-import { PDFDocument } from "pdf-lib";
+import { assertReadableStoredPdf } from "./stored-pdf.js";
 import { createHash } from "node:crypto";
 import type { WaterlooWorksSession } from "../../shared/src/protocol.js";
 import type { LibraryDocument, PreparedFile } from "../../application-workflow/src/types.js";
@@ -81,11 +81,7 @@ export class ApplicationDocuments {
     const data = jsonObject(await this.http.read(context.session, DOCUMENT_PATH, new URLSearchParams({ action, docId: document.id }), true));
     if (typeof data.doc !== "string" || data.doc.length > 7_000_000 || !/^[A-Za-z0-9+/=\r\n]+$/.test(data.doc)) throw new ProtocolChangedError("Document PDF could not be read");
     const bytes = Buffer.from(data.doc, "base64");
-    if (!bytes.subarray(0, 8).toString("ascii").startsWith("%PDF-") || !bytes.subarray(-1024).toString("latin1").includes("%%EOF")) throw new ProtocolChangedError("Stored document is not a readable PDF");
-    try {
-      const pdf = await PDFDocument.load(bytes, { throwOnInvalidObject: true });
-      if (pdf.isEncrypted || pdf.getPageCount() < 1) throw new Error("Unreadable PDF");
-    } catch { throw new ProtocolChangedError("Stored document is not a readable PDF"); }
+    await assertReadableStoredPdf(new Uint8Array(bytes));
     return { document: { ...document, revision: createHash("sha256").update(bytes).digest("hex") }, bytes: new Uint8Array(bytes) };
   }
 

@@ -236,3 +236,15 @@ test("compensation's Current Work Term label cannot overwrite the recruiting ter
   expect(posting.compensation).toContain("Current Work Term:");
   expect(posting.compensation).toContain("$833");
 });
+
+test("an empty field does not hide the label that follows it",()=>{
+  // Posting 496238: an empty Additional Application Information sat directly above Application Method.
+  const label=(name:string)=>`<span class="label align--middle display--flex"><strong>${name}:</strong></span>`;
+  const overview=`<div>${label("Application Documents Required")}<p>Résumé,Grade Report</p></div>
+    <div>${label("Additional Application Information")}</div>
+    <div>${label("Application Method")}<p>WaterlooWorks</p></div>
+    <div><h3>Company Information</h3>${label("Organization")}<p>Acme</p></div>`;
+  const posting=normalizeJobPosting("496238",{postingId:"496238",position:"Edge AI Hardware Intern"},overview,undefined);
+  expect(posting.application?.method).toBe("WaterlooWorks");
+  expect(posting.application?.additionalInformation).toBeUndefined();
+});

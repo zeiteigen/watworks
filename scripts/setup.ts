@@ -2,6 +2,8 @@
 /**
  * One-shot local setup for a source checkout: dependencies, extension build,
  * Tectonic, the data/ workspace, and agent skill links. Safe to re-run.
+ * `--update` (used by `bun run update`) skips LaTeX unless `--latex` is given and
+ * ends with reload instructions instead of first-run instructions.
  * Only node: builtins are imported statically because dependencies may be missing.
  */
 import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, rmSync, statSync, symlinkSync } from "node:fs";
@@ -81,7 +83,8 @@ async function main() {
   step("Building the browser extension");
   run(["bun", "packages/extension/build.ts"]);
 
-  if (!args.has("--skip-latex")) {
+  const updating = args.has("--update");
+  if (updating ? args.has("--latex") : !args.has("--skip-latex")) {
     step("Setting up LaTeX (Tectonic)");
     await installTectonic();
   }
@@ -99,13 +102,28 @@ async function main() {
   step("Linking agent skills");
   linkSkills();
 
+  const extension = join(root, "dist", "packages", "extension");
+  if (updating) {
+    const { version } = await Bun.file(join(extension, "manifest.json")).json() as { version: string };
+    console.log(`
+Update complete. The extension (version ${version}) was rebuilt in:
+  ${extension}
+
+To start using it:
+  1. Wait until no application is uploading or submitting in the dashboard.
+  2. Open chrome://extensions and click the reload button on "WaterlooWorks Workspace".
+     Reloading a WaterlooWorks tab does not update the extension.
+  3. Restart Claude Code or Codex in this folder so the MCP server runs the new code.
+`);
+    return;
+  }
   console.log(`
 Setup complete.
 
 Next, connect your browser session (one time):
   1. Open chrome://extensions (or your Chromium browser's equivalent)
   2. Enable Developer mode, click "Load unpacked", and select:
-       ${join(root, "dist", "packages", "extension")}
+       ${extension}
   3. Open the extension popup and select Sign In. Complete any autofill or Duo prompts.
      Open Dashboard opens inside the extension. The agent starts workspace file access automatically.
 
