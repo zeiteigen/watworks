@@ -42,6 +42,7 @@ export function finalStep(job: HostedJob, ctx: StepContext): StepView {
     return { body, menu };
   }
   if (!job.manifestHash || job.manifest === undefined) return { body, menu };
-  const submit = writeButton(`Submit application to ${jobEmployer(job)}`, () => ctx.act(() => confirmSubmission(job, ctx.hooks), { advance: false }), "job-confirm");
-  return { body, primary: submit, menu, help: "This sends the application exactly as listed above. It can't be undone." };
+  // Submissions queue on this page, so the review moves on instead of waiting for this one.
+  const submit = writeButton(`Submit application to ${jobEmployer(job)}`, () => ctx.act(() => confirmSubmission(job, ctx.hooks)), "job-confirm");
+  return { body, primary: submit, menu, help: "This sends the application exactly as listed above and can't be undone. You can move on: submissions go one at a time while this page stays open." };
 }

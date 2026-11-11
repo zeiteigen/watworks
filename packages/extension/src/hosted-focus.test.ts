@@ -47,8 +47,8 @@ test("home says only how much needs you, and the review starts with the most urg
   expect(f.$("#session-count").textContent).toBe("1 of 3");
   // An unchecked submission comes first, and it can never be submitted again from here.
   expect(f.$("#task-stage .task-title").textContent).toBe("QA developer");
-  expect(f.$("#task-stage").textContent).toContain("Do not submit it again");
   expect(f.document.querySelector("#task-stage .job-confirm")).toBeNull();
+  expect(f.$("#task-stage .task-actions .primary").textContent).toBe("Check WaterlooWorks again");
   f.buttons("Skip for now")[0]!.click();
   expect(f.$("#task-stage .task-title").textContent).toBe("Designer");
 });

@@ -23,6 +23,9 @@ export async function prepareHostedSubmissionSession(): Promise<void> {
       referrerPolicy: "no-referrer", signal: AbortSignal.timeout(60_000),
     });
     const value = await response.json() as { code?: string; error?: string };
+    // Another job is using the imported session right now, which proves it is there and working.
+    // Commands queue behind that operation on the server, so there is nothing to replace.
+    if (response.status === 409 && value.error === "An operation is active") return;
     if (!response.ok) {
       if (value.code === "session_invalid") await chrome.storage.session.set({ [rejectedKey]: fingerprint });
       throw new Error(value.error ?? `Hosted session verification failed (HTTP ${response.status}).`);

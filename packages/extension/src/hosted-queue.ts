@@ -134,20 +134,54 @@ export function saveAnswers(job: HostedJob, hooks: WriteHooks, edited: { answers
 export function approveDocument(job: HostedJob, hooks: WriteHooks, approval: { customResumeHash?: string; coverLetterHash?: string }): Promise<void> {
   return runJobWrite(job, "Continuing the application…", hooks, () => prepare(job, hooks, approval as Record<string, string>));
 }
+/**
+ * Submissions leave this page one at a time, in the order they were clicked, so the user can
+ * submit and move on. A queued one has sent nothing yet; it waits for the one ahead to settle.
+ */
+let submissionTail: Promise<void> = Promise.resolve();
+const submissionQueue: string[] = [];
+export function hostedSubmissionsQueued(): number { return submissionQueue.length; }
+
 /** Submits exactly the manifest shown in the final check. Never retried from this page. */
 export function confirmSubmission(job: HostedJob, hooks: WriteHooks): Promise<void> {
   const key = `${job.jobId}:confirm_required`;
   if (attemptedWrites.has(key) || !job.manifestHash) return Promise.resolve();
   attemptedWrites.add(key);
-  return runJobWrite(job, "Submitting… Do not retry if the result is uncertain.", hooks, async () => {
+  const ahead = submissionQueue.length, previous = submissionTail;
+  let release!: () => void;
+  submissionTail = new Promise(resolve => { release = resolve; });
+  submissionQueue.push(job.jobId);
+  const waiting = ahead ? `Queued to submit after ${ahead} other ${ahead === 1 ? "application" : "applications"}` : "Submitting… Do not retry if the result is uncertain.";
+  return runJobWrite(job, waiting, hooks, async () => {
     try {
+      await previous;
+      if (ahead) { pendingJobs.set(job.jobId, "Submitting… Do not retry if the result is uncertain."); hooks.progress(); }
       await prepareSession();
       const outcome = await trackProgress(job, "submitting", hooks, () => hostedRequest<{status?: string}>(`/jobs/${encodeURIComponent(job.jobId)}/confirm`, { method: "POST", body: JSON.stringify({ manifestHash: job.manifestHash }) }));
-      return outcome.status === "submitted" ? "Submitted." : { text: "The outcome needs checking. Look on WaterlooWorks before doing anything else.", tone: "error" };
+      return outcome.status === "submitted" ? "Submitted." : { text: "The outcome needs checking. Use Check WaterlooWorks again before doing anything else.", tone: "error" };
     } catch (error) {
       if (error instanceof HostedRejection) { attemptedWrites.delete(key); throw error; }
       throw new Error(`${error instanceof Error ? error.message : String(error)} Do not submit again until you have checked WaterlooWorks.`);
+    } finally {
+      submissionQueue.splice(submissionQueue.indexOf(job.jobId), 1);
+      release();
     }
+  });
+}
+
+/**
+ * Asks the server to read WaterlooWorks for an application whose outcome is unknown. It never
+ * writes: an application found is recorded as sent; one verifiably absent returns to the final
+ * check, where only another Submit click can send it.
+ */
+export function checkOutcome(job: HostedJob, hooks: WriteHooks): Promise<void> {
+  return runJobWrite(job, "Checking WaterlooWorks for this application…", hooks, async () => {
+    await prepareSession();
+    const result = await hostedRequest<{status?: string}>(`/jobs/${encodeURIComponent(job.jobId)}/reconcile`, { method: "POST", body: "{}" });
+    if (result.status === "submitted") return "Your application is on WaterlooWorks, so it is marked as sent.";
+    // The server verified nothing was received, so the final check may offer Submit again.
+    attemptedWrites.delete(`${job.jobId}:confirm_required`);
+    return "WaterlooWorks has no application for this posting, so nothing was sent. Check it and submit again when you're ready.";
   });
 }
 

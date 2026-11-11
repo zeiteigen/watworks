@@ -2,7 +2,7 @@ import { renderAnswersStep } from "./hosted-answers.js";
 import { canOpenApplicationForm, jobMenu, postingDetail } from "./hosted-job-actions.js";
 import { forgetLetterUpload, letterStep, letterUploadForm } from "./hosted-letter-ui.js";
 import { finalStep } from "./hosted-manifest.js";
-import { approveAnswers, hasHostedCoverSlot, type JobNotice, hostedJobNotice, hostedJobPending, hostedWriteAttempted, jobEmployer, jobTitle, saveAnswers, type HostedJob } from "./hosted-queue.js";
+import { approveAnswers, checkOutcome, hasHostedCoverSlot, type JobNotice, hostedJobNotice, hostedJobPending, hostedWriteAttempted, jobEmployer, jobTitle, saveAnswers, type HostedJob } from "./hosted-queue.js";
 import { customResumeToggle, resumeStep } from "./hosted-resume-ui.js";
 import { button, menuItem, openHostedFile, openOnWaterlooWorks, text, writeButton, type StepContext, type StepView } from "./hosted-step.js";
 import { dueLabel, externalSteps, hostedTask, taskBlockers } from "./hosted-tasks.js";
@@ -84,8 +84,8 @@ function answersStep(job: HostedJob, ctx: StepContext, notice: Notice): StepView
 function infoStep(job: HostedJob, ctx: StepContext): StepView {
   const task = hostedTask(job), body = document.createElement("div"), report = ctx.hooks.report;
   if (task.kind === "uncertain") {
-    body.append(text("p", "WatWorks lost track of this submission after it started, so it may or may not have reached the employer. Look for it in your WaterlooWorks applications."), text("p", "Do not submit it again until you have checked.", "warning"));
-    return { body, primary: button("Check on WaterlooWorks ↗", () => void openOnWaterlooWorks("openPosting", job, report)) };
+    body.append(text("p", "WatWorks lost track of this application after it started, so it may or may not have reached the employer."), text("p", "Check WaterlooWorks again reads your WaterlooWorks applications. If it is there, it is marked as sent. If it is not, it goes back to its final check so you can submit it again.", "meta"));
+    return { body, primary: writeButton("Check WaterlooWorks again", () => ctx.act(() => checkOutcome(job, ctx.hooks), { advance: false })), help: "Nothing is sent to WaterlooWorks by checking." };
   }
   if (task.kind === "blocked") {
     const list = document.createElement("ul"); list.className = "blockers";

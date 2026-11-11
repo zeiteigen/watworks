@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import { getHostedAccount, getInsiderAccount } from "./insider-account.js";
 import { hostedRequest } from "./hosted-client.js";
 import { prepareHostedSubmissionSession } from "./hosted-session.js";
+import { confirmSubmission, hostedJobPending } from "./hosted-queue.js";
 import { HOSTED_INSIDER_SESSION_KEY, INSIDER_SESSION_KEY } from "./insider-session.js";
 import { browserResearch } from "./research.js";
 
@@ -13,6 +14,7 @@ let local: Record<string, unknown>, session: Record<string, unknown>;
 let requests: Array<{ url: string; init: RequestInit | undefined }>;
 let invited: boolean, authStatus: number, importStatus: number;
 let health: ReturnType<typeof spyOn>;
+let confirmations: Array<{ jobId: string; finish: () => void }> = [];
 function storage(data: Record<string, unknown>) {
   return { get: async (key: string) => ({ [key]: data[key] }), set: async (values: Record<string, unknown>) => { Object.assign(data, values); }, remove: async (key: string) => { delete data[key]; }, setAccessLevel: async () => {} };
 }
@@ -29,8 +31,10 @@ beforeEach(() => {
     expect(url.startsWith(endpoint + "/v1/")).toBe(true);
     if (url.endsWith("/auth/waterlooworks")) return Response.json(authStatus === 200 ? { token: invited ? "f".repeat(64) : null, expiresAt: Date.now() + 3600000, account: { email: "student@uwaterloo.ca", insider: invited, term: "2026-fall", admin: false } } : { error: "Unavailable" }, { status: authStatus });
     expect(new Headers(init?.headers).get("authorization")).toBe("Bearer " + "f".repeat(64));
-    if (url.endsWith("/session")) return Response.json(importStatus === 200 ? { accountKey: "student", sessionId: "hosted-session" } : { code: "session_invalid", error: "Credentials rejected" }, { status: importStatus });
+    if (url.endsWith("/session")) return Response.json(importStatus === 200 ? { accountKey: "student", sessionId: "hosted-session" } : importStatus === 409 ? { error: "An operation is active" } : { code: "session_invalid", error: "Credentials rejected" }, { status: importStatus });
     if (url.endsWith("/account")) return Response.json({ email: "student@uwaterloo.ca", insider: invited, term: "2026-fall", admin: false });
+    const confirm = /\/v1\/workspace\/jobs\/(\d+)\/confirm$/.exec(url);
+    if (confirm) return new Promise<Response>(resolve => confirmations.push({ jobId: confirm[1]!, finish: () => resolve(Response.json({ status: "submitted" })) }));
     expect(url).toBe(endpoint + "/v1/workspace");
     return Response.json({ profile: null, resumes: [], jobs: [], runs: [], ai: { available: false, reason: "Connect ChatGPT" } });
   }) as typeof fetch;
@@ -87,6 +91,12 @@ test("hosted preparation imports directly to Cloudflare and preserves advanced s
   expect(JSON.stringify(session)).not.toContain('"cookies"');
 });
 
+test("a session busy with another job counts as prepared, so queued writes wait behind it", async () => {
+  importStatus = 409;
+  await prepareHostedSubmissionSession();
+  expect(requests.filter(request => request.url.endsWith("/session"))).toHaveLength(1);
+});
+
 test("signed-out preparation does not import credentials or open login", async () => {
   health.mockResolvedValue({ authenticated: false, bridgeConnected: true, bootstrapped: false });
   await expect(prepareHostedSubmissionSession()).rejects.toThrow("Sign in to WaterlooWorks");
@@ -98,4 +108,24 @@ test("rejected hosted credentials are not resent until browser credentials chang
   await expect(prepareHostedSubmissionSession()).rejects.toThrow("Credentials rejected");
   await expect(prepareHostedSubmissionSession()).rejects.toThrow("credentials were rejected");
   expect(requests.filter(request => request.url.endsWith("/session"))).toHaveLength(1);
+});
+
+test("submissions clicked one after another leave this page one at a time, in order", async () => {
+  confirmations = [];
+  const chromeValue = (globalThis as unknown as { chrome: Record<string, unknown> }).chrome;
+  chromeValue.runtime = { sendMessage: async () => ({ ok: true }) };
+  const hooks = { refresh: () => {}, report: () => {}, progress: () => {} };
+  const job = (jobId: string) => ({ jobId, status: "confirm_required", manifestHash: "a".repeat(64), manifest: {} });
+  const first = confirmSubmission(job("1"), hooks), second = confirmSubmission(job("2"), hooks);
+  expect(hostedJobPending("2")).toBe("Queued to submit after 1 other application");
+  const settle = async () => { for (let tick = 0; tick < 50 && confirmations.length < 1; tick++) await new Promise(resolve => setTimeout(resolve, 5)); };
+  await settle();
+  // The second has sent nothing while the first is still out.
+  expect(confirmations.map(item => item.jobId)).toEqual(["1"]);
+  confirmations.shift()!.finish(); await first;
+  await settle();
+  expect(confirmations.map(item => item.jobId)).toEqual(["2"]);
+  expect(hostedJobPending("2")).toBe("Submitting… Do not retry if the result is uncertain.");
+  confirmations.shift()!.finish(); await second;
+  expect(hostedJobPending("2")).toBeUndefined();
 });

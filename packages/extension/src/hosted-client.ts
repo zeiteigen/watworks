@@ -48,7 +48,7 @@ export async function hostedRequest<T>(path = "", init: RequestInit = {}): Promi
     ...init,
     headers: { "content-type": "application/json", authorization: `Bearer ${session.token}`, ...init.headers },
     credentials: "omit", redirect: "error", cache: "no-store", referrerPolicy: "no-referrer",
-    signal: AbortSignal.timeout(/^\/jobs\/\d+\/(prepare|confirm|custom-resume\/choices|custom-resume\?markup=1)$/.test(path) ? 420_000 : path === "/ai-key" ? 45_000 : 30_000), // The key check itself may take the server 30 seconds.
+    signal: AbortSignal.timeout(/^\/jobs\/\d+\/(prepare|confirm|reconcile|custom-resume\/choices|custom-resume\?markup=1)$/.test(path) ? 420_000 : path === "/ai-key" ? 45_000 : 30_000), // The key check itself may take the server 30 seconds.
   });
   if (response.ok && ["application/pdf", "application/x-tex"].some(type => response.headers.get("content-type")?.toLowerCase().startsWith(type))) return await response.blob() as T;
   const data = await response.json().catch(() => ({})) as { error?: string };
