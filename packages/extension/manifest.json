@@ -14,20 +14,17 @@
   "host_permissions": [
     "https://watworks.alishahzad.dev/*",
     "https://waterlooworks.uwaterloo.ca/*",
-    "http://127.0.0.1/*",
     "https://adfs.uwaterloo.ca/*",
     "https://sts.uwaterloo.ca/*"
+  ],
+  "optional_host_permissions": [
+    "http://127.0.0.1/*"
   ],
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAz+RwTFyVSNkViDNirZHwscqQ+ItlwFtRVg5x5r2CCy1UMUwrODAWFipt1PCa5r7GX2XjHvRcl8M2a7aqLN3fhNuRP4yKD4GeFO6WdchcvbiEG1dBIDymRrTDF+NjebUxUtAtWJT88DKhy23Tg+/C4sVSWnry9unB0iSxA/DgovfVVuRZ151h31wiesOpGnWQ8broJSxaYeplh8n+FiEBNQFi4Jj5FTFbgn1KmC/0end9POzLVvTwDBaLhrrV1TK+GdKPxXyRF3W/UN1EzkhMVj7VuMLhiEcUndSXve8gJm8/AAvbqv7MyIbSlKu0pzEHsjwSnmOs047m4avnu1e4rwIDAQAB",
-  "optional_host_permissions": [
-    "https://*/*",
-    "http://localhost/*",
-    "http://[::1]/*"
-  ],
   "action": {
     "default_popup": "popup.html",
     "default_icon": {

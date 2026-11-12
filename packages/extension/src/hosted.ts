@@ -3,6 +3,7 @@ import { hostedRequest, streamHostedEvents, type HostedProfile, type HostedResum
 import { hostedQueueNeedsPolling, launchHostedSearch, type Tone } from "./hosted-queue.js";
 import { createAccountSync } from "./hosted-signin.js";
 import { createFocusView } from "./hosted-focus.js";
+import { beginChatGptConnect } from "./chatgpt-signin.js";
 import { createAiSettings } from "./hosted-ai-settings.js";
 import { createLetterSettings } from "./hosted-letter-settings.js";
 import { createMaterialSettings } from "./hosted-material-settings.js";
@@ -53,8 +54,9 @@ function profileFromForm(form: HTMLFormElement): Omit<HostedProfile, "background
   };
 }
 function showProfile(profile: HostedProfile | null): void {
-  if (!profile) return;
   const form = $("#profile-form") as HTMLFormElement;
+  // A reset account has no profile: show the empty form, not the previous answers.
+  if (!profile) { form.reset(); $("#saved").textContent = ""; return; }
   (form.elements.namedItem("eightMonthEligible") as HTMLSelectElement).value = profile.eightMonthEligible ?? "unknown";
   (form.elements.namedItem("roles") as HTMLInputElement).value = profile.roles.join(", ");
   (form.elements.namedItem("citizenshipCountries") as HTMLInputElement).value = (profile.citizenshipCountries ?? []).join(", ");
@@ -117,11 +119,11 @@ async function load(): Promise<void> {
 function updateQueue(workspace: HostedWorkspace): void {
   latestJobIds = new Set(workspace.jobs.map(job => job.jobId));
   for (const id of pendingPostings) {
-    const say = (text: string) => { pendingPostings.delete(id); $("#launch-state").textContent = text; message(text); };
+    const say = (text: string, tone: Tone = "info") => { pendingPostings.delete(id); message(text, tone); };
     // Runs come newest first. A finished run with no job was skipped: closed, already applied to, or removed by you.
     const run = workspace.runs.find(item => item.kind === "posting" && item.posting_id === id);
     if (latestJobIds.has(id)) say(`Posting ${id} is ready in your list.`);
-    else if (run?.status === "failed") { say(`Posting ${id} could not be prepared. Check your WaterlooWorks session and AI connection, then try again.`); message($("#launch-state").textContent ?? "", "error"); }
+    else if (run?.status === "failed") say(`Posting ${id} could not be prepared. Check your WaterlooWorks session and AI connection, then try again.`, "error");
     else if (run?.status === "ready") say(`Posting ${id} was not added. It may be closed, already applied to, or removed from your list.`);
   }
   const allowed = workspace.ai.available === true;
@@ -181,7 +183,7 @@ $("#resume-form").addEventListener("submit", async event => {
 });
 $("#launch-form").addEventListener("submit", async event => {
   event.preventDefault(); const form = event.currentTarget as HTMLFormElement, button = form.querySelector<HTMLButtonElement>("button")!;
-  const state = $("#launch-state"), say = (text: string) => { state.textContent = text; message(text); };
+  const say = (text: string) => message(text);
   if (button.disabled) return;
   const postingId = String(new FormData(form).get("postingId") ?? "").trim(); if (!/^\d+$/.test(postingId)) { say("Enter a numeric WaterlooWorks posting ID."); return; }
   if (latestJobIds.has(postingId)) { say(`Posting ${postingId} is already in your list.`); return; }
@@ -190,7 +192,7 @@ $("#launch-form").addEventListener("submit", async event => {
   // Tracked before launching: the refresh inside the launch may already report an existing run's result.
   pendingPostings.add(postingId);
   try {
-    if (await launchHostedSearch(say, refreshQueue, postingId)()) { setTimeout(() => { if (pendingPostings.delete(postingId)) state.textContent = ""; }, 10 * 60_000); form.reset(); }
+    if (await launchHostedSearch(say, refreshQueue, postingId)()) { setTimeout(() => pendingPostings.delete(postingId), 10 * 60_000); form.reset(); }
     else pendingPostings.delete(postingId);
   }
   finally { button.disabled = false; button.textContent = "Prepare"; }
@@ -201,6 +203,22 @@ $("#daily-launch").addEventListener("click", async event => {
   button.disabled = true; button.textContent = "Launching…";
   try { await launchHostedSearch(message, refreshQueue)(); }
   finally { button.disabled = false; button.textContent = "Run today’s search"; }
+});
+const resetForm = $("#reset-form") as HTMLFormElement, resetConfirm = resetForm.elements.namedItem("confirm") as HTMLInputElement;
+const resetButton = resetForm.querySelector<HTMLButtonElement>("button[type=submit]")!;
+resetConfirm.addEventListener("input", () => { resetButton.disabled = resetConfirm.value.trim().toLowerCase() !== "reset"; });
+resetForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  if (resetButton.disabled || resetConfirm.value.trim().toLowerCase() !== "reset") return;
+  resetButton.disabled = true; resetButton.textContent = "Resetting…";
+  try {
+    await hostedRequest("/reset", { method: "POST", body: JSON.stringify({ confirm: "reset" }) });
+    resetForm.reset(); pendingPostings.clear();
+    for (const section of document.querySelectorAll<HTMLDetailsElement>(".setup-section")) section.open = false;
+    await load();
+    message("Your account was reset. Your Insider access is unchanged.");
+  } catch (error) { message(error instanceof Error ? error.message : String(error), "error"); }
+  finally { resetButton.textContent = "Reset account"; resetButton.disabled = resetConfirm.value.trim().toLowerCase() !== "reset"; }
 });
 // Background notes can change from preparation (remembered answers); reload them when the section opens.
 $<HTMLDetailsElement>('[data-section="background"]').addEventListener("toggle", event => {
@@ -235,13 +253,14 @@ $("#waterlooworks-signin").addEventListener("click", async event => {
   } catch (error) { message(error instanceof Error ? error.message : String(error), "error"); }
   finally { button.disabled = false; }
 });
-$("#chatgpt-connect").addEventListener("click", async event => {
-  const button = event.currentTarget as HTMLButtonElement; button.disabled = true; message("Opening ChatGPT sign-in…");
-  try {
-    const reply = await chrome.runtime.sendMessage({ type: "chatgptSignIn" });
-    if (!reply?.ok) throw new Error(reply?.error ?? "Could not start ChatGPT sign-in.");
-    message("Finish signing in to ChatGPT in the new tab. This page will update when it’s connected.");
-  } catch (error) { message(error instanceof Error ? error.message : String(error), "error"); button.disabled = false; }
+$("#chatgpt-connect").addEventListener("click", event => {
+  const button = event.currentTarget as HTMLButtonElement; button.disabled = true;
+  // Synchronous within the click so Chrome can show the 127.0.0.1 permission prompt.
+  const connecting = beginChatGptConnect();
+  message("Opening ChatGPT sign-in…");
+  connecting.then(
+    () => message("Finish signing in to ChatGPT in the new tab. This page will update when it’s connected."),
+    error => { message(error instanceof Error ? error.message : String(error), "error"); button.disabled = false; });
 });
 chrome.runtime.onMessage.addListener((message: unknown) => {
   if ((message as { type?: string } | null)?.type === "waterlooWorksSignedIn") { signInSignal(); return; }

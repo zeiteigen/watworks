@@ -23,20 +23,17 @@ describe("WaterlooWorks extension security contract", () => {
     expect(extensionIdFromPublicKey(manifest.key)).toBe(EXPECTED_EXTENSION_ID);
   });
 
-  test("keeps permanent host access bounded and requests configurable server hosts optionally", () => {
+  test("asks for no local-network access at install and only 127.0.0.1 optionally, for ChatGPT sign-in", () => {
     expect(manifest.permissions).toEqual(["alarms", "storage", "notifications", "scripting", "nativeMessaging", "cookies"]);
     expect(manifest.host_permissions).toEqual([
       "https://watworks.alishahzad.dev/*",
       "https://waterlooworks.uwaterloo.ca/*",
-      "http://127.0.0.1/*",
       "https://adfs.uwaterloo.ca/*",
       "https://sts.uwaterloo.ca/*",
     ]);
-    expect(manifest.optional_host_permissions).toEqual([
-      "https://*/*",
-      "http://localhost/*",
-      "http://[::1]/*",
-    ]);
+    // Local services and custom submission servers answer CORS for the extension ID instead.
+    expect(manifest.optional_host_permissions).toEqual(["http://127.0.0.1/*"]);
+    expect(manifest.host_permissions.some(host => /127\.0\.0\.1|localhost|\[::1\]/.test(host))).toBe(false);
     expect(manifest.options_ui).toEqual({ page: "submission-settings.html", open_in_tab: true });
     expect(manifest.content_scripts.flatMap(script => script.matches)).not.toContain("https://login.microsoftonline.com/*");
     expect(manifest.host_permissions).not.toContain("<all_urls>");

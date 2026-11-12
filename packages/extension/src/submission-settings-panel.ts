@@ -44,14 +44,11 @@ export function createSubmissionSettingsPanel(): HTMLElement {
     accountStatus.textContent = account ? `${account.insider ? "Insider" : "Core"} plan${account.email ? ` · ${account.email}` : ""}${account.term ? ` · ${account.term}` : ""}${reason ? ` · ${reason}` : ""}` : "Core plan · Sign in to WaterlooWorks for account status.";
   }
   element("save").addEventListener("click", () => {
-    // Request the selected origin synchronously within this user gesture.
+    // No host permission is requested: the submission server answers CORS for the extension ID.
     let validated: string, proxyHeaders: Record<string, string>;
     try { validated = validateSubmissionEndpoint(endpoint.value); proxyHeaders = validateSubmissionHeaders(JSON.parse(headers.value)); }
     catch (error) { status.textContent = error instanceof Error ? error.message : "Invalid settings"; return; }
-    const url = new URL(validated);
-    const permission = chrome.permissions.request({ origins: [`${url.protocol}//${url.hostname}/*`] });
     void run(async () => {
-      if (!(await permission)) throw new Error("Endpoint permission was not granted");
       const saved = await saveSubmissionSettings(validated, proxyHeaders); endpoint.value = validated; element("destination").textContent = `Session transfer destination: ${validated}`;
       return `Endpoint saved. ${await describeStatus()}${saved.warning ? ` ${saved.warning}` : ""}`;
     });

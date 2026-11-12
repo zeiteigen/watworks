@@ -12,6 +12,7 @@ async function bundle(entry: "dashboard" | "popup"): Promise<string> {
   return result.outputs[0]!.text();
 }
 
+const permissionRequests: unknown[] = [];
 function chromeApi() {
   return {
     storage: {local:{setAccessLevel:async()=>{},get:async()=>({})},session:{setAccessLevel:async()=>{},get:async()=>({})}},
@@ -25,7 +26,7 @@ function chromeApi() {
       getURL: (path: string) => `chrome-extension://test/${path}`,
     },
     tabs: { create: async () => {} },
-    permissions: { request: async () => true },
+    permissions: { request: async (request: unknown) => { permissionRequests.push(request); return true; } },
   };
 }
 
@@ -88,11 +89,15 @@ describe("extension entrypoint bundles", () => {
     expect(developer.hidden).toBe(false);
     expect(document.querySelector("#submission-status")?.textContent).toContain("syncs automatically");
     endpoint.value="http://127.0.0.1:39453";
+    // Custom servers answer CORS for the extension ID; saving never asks for host access.
+    document.querySelector<HTMLButtonElement>("#submission-save")!.click();
+    await new Promise(resolve=>setTimeout(resolve,0));
+    expect(permissionRequests).toEqual([]);
     document.querySelector<HTMLButtonElement>("#submission-hide-developer")!.click();
     expect(developer.hidden).toBe(true);
     await new Promise(resolve=>setTimeout(resolve,0));
     expect(endpoint.value).toBe("https://watworks.alishahzad.dev");
-    expect(document.querySelector("#submission-save")?.textContent).toBe("Save endpoint and grant access");
+    expect(document.querySelector("#submission-save")?.textContent).toBe("Save endpoint");
     expect(document.querySelector("#submission-transfer")).toBeNull();
     expect(document.querySelector("#submission-clear")).toBeNull();
     expect(document.querySelector("dialog")).toBeNull();

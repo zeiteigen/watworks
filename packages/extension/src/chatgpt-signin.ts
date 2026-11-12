@@ -2,6 +2,26 @@ import { hostedRequest } from "./hosted-client.js";
 
 const PENDING_KEY = "hosted:chatgpt-signin";
 const AUTH_ORIGIN = "https://auth.openai.com";
+/** Optional host permission for the local OAuth callback tab; requested when the user clicks Connect. */
+export const CHATGPT_CALLBACK_PERMISSION = "http://127.0.0.1/*";
+const CALLBACK_PERMISSION_DENIED = "ChatGPT sign-in returns to a local address (127.0.0.1) that WatWorks needs permission to read. Allow it to connect ChatGPT, or add an API key instead.";
+
+type ConnectApi = {
+  permissions: { request(permissions: { origins: string[] }): Promise<boolean> };
+  runtime: { sendMessage(message: { type: "chatgptSignIn" }): Promise<{ ok?: boolean; error?: string } | undefined> };
+};
+/**
+ * Call synchronously from the Connect click: Chrome shows the optional-permission prompt only
+ * inside a user gesture, so the request is made before anything is awaited.
+ */
+export function beginChatGptConnect(api: ConnectApi = chrome as unknown as ConnectApi): Promise<void> {
+  const permission = api.permissions.request({ origins: [CHATGPT_CALLBACK_PERMISSION] });
+  return (async () => {
+    if (!await permission) throw new Error(CALLBACK_PERMISSION_DENIED);
+    const reply = await api.runtime.sendMessage({ type: "chatgptSignIn" });
+    if (!reply?.ok) throw new Error(reply?.error ?? "Could not start ChatGPT sign-in.");
+  })();
+}
 const AUTH_PATH = "/api/accounts/authorize";
 const ATTEMPT_LIFETIME = 10 * 60_000;
 let completingAttempt: string | undefined;
@@ -37,6 +57,9 @@ export async function startChatGptSignIn(): Promise<{ started: true }> {
   const pending = await readPending();
   if (pending && pending.expiresAt > Date.now()) throw new Error("A ChatGPT connection is already in progress.");
   if (pending) await clearPending();
+  // Without it the callback tab's address is hidden and the attempt could never finish.
+  if (!await chrome.permissions.contains({ origins: [CHATGPT_CALLBACK_PERMISSION] }))
+    throw new Error(CALLBACK_PERMISSION_DENIED);
   const result = await hostedRequest<StartResponse>("/chatgpt/start", { method: "POST", body: "{}" });
   const authorization = new URL(result.authorizationUrl);
   if (authorization.origin !== AUTH_ORIGIN || authorization.pathname !== AUTH_PATH || authorization.username || authorization.password || authorization.hash)

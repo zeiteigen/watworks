@@ -80,7 +80,7 @@ export function createFocusView(root: Document, refresh: () => void | Promise<vo
     const working = all.filter(job => hostedTask(job).owner === "watworks"), sent = all.filter(job => job.status === "submitted"), steps = sent.filter(job => externalSteps(job).length);
     const first = waiting[0];
     $("#home-sub").textContent = first ? `One at a time, most urgent first. First up: ${jobEmployer(first)}${dueLabel(first) ? `, ${dueLabel(first)}` : ""}.`
-      : working.length ? "WatWorks is preparing applications. They appear here when they need you." : "Run today's search from + to find new matches.";
+      : working.length ? "WatWorks is preparing applications. They appear here when they need you." : "Run today's search to find new matches.";
     $<HTMLButtonElement>("#start-review").hidden = !waiting.length;
     const parts = [working.length ? `WatWorks is preparing ${working.length} more` : "", steps.length ? `${steps.length} ${steps.length === 1 ? "step" : "steps"} left on employer sites` : "", sent.length ? `${sent.length} sent` : ""].filter(Boolean);
     const quiet = $<HTMLButtonElement>("#quiet-toggle"), detail = $("#quiet-detail");
@@ -161,7 +161,7 @@ export function createFocusView(root: Document, refresh: () => void | Promise<vo
       list.append(...members.map(row));
       group.append(summary, list); return group;
     }));
-    if (!all.length) { const empty = root.createElement("p"); empty.className = "meta"; empty.textContent = "No jobs yet. Run today's search from + to find matches."; $("#job-groups").appendChild(empty); }
+    if (!all.length) { const empty = root.createElement("p"); empty.className = "meta"; empty.textContent = "No jobs yet. Run today's search to find matches."; $("#job-groups").appendChild(empty); }
   }
 
   function renderSetup(): void {

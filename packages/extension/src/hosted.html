@@ -11,15 +11,11 @@
     <nav class="nav" aria-label="Workspace">
       <button type="button" class="nav-link" data-screen="jobs">All jobs</button>
       <button type="button" class="nav-link" data-screen="setup">Setup</button>
-      <details class="more plus">
-        <summary aria-label="Find more jobs">+</summary>
-        <div class="menu">
-          <button id="daily-launch" type="button" class="menu-item">Run today’s search</button>
-          <form id="launch-form" class="menu-form"><label for="posting-id">Prepare a posting by ID</label><div class="inline"><input id="posting-id" name="postingId" inputmode="numeric" pattern="[0-9]+" placeholder="e.g. 498765" required><button type="submit" class="secondary">Prepare</button></div></form>
-          <p id="launch-state" class="hint" role="status" aria-live="polite"></p>
-        </div>
-      </details>
     </nav>
+    <div class="header-actions">
+      <form id="launch-form" class="launch-form"><label for="posting-id" class="visually-hidden">Posting ID to prepare</label><input id="posting-id" name="postingId" inputmode="numeric" pattern="[0-9]+" placeholder="Posting ID" required><button type="submit" class="secondary">Prepare</button></form>
+      <button id="daily-launch" type="button">Run today’s search</button>
+    </div>
   </div>
   <div class="alerts">
     <p id="signin-alert" class="alert" hidden>Sign in to WaterlooWorks to keep working. <button id="waterlooworks-signin" type="button" class="link">Sign in ↗</button></p>
@@ -128,6 +124,16 @@
           <p class="meta marker-list">The letter is written as plain text and placed at these markers, safely escaped. <code>%%WAT:BODY%%</code> is required: <span id="letter-template-markers"></span></p>
           <p class="meta">Available packages include geometry, xcolor, hyperref, titlesec, enumitem, parskip, fancyhdr, setspace and multicol, with the article and letter classes. Regular and bold text work up to \Huge; italic up to 12pt; small caps from 9 to 12pt; bold italic is unavailable. If something else is missing, the draft reports the LaTeX error. The letter must fit on one page.</p>
           <p id="letter-settings-state" class="meta" role="status"></p><div class="actions"><button type="submit" disabled>Save cover letter template</button><button id="letter-template-default" type="button" class="secondary" disabled>Start from the default template</button></div>
+        </form>
+      </details>
+
+      <details class="setup-section danger-zone" data-section="reset">
+        <summary><span class="name">Reset account</span><span class="sum">Start over with an empty workspace</span></summary>
+        <form id="reset-form" class="section-body profile-form">
+          <p class="meta">Deletes your profile, background notes and working memory, resumes, prepared jobs, cover letters and tailored resumes, your ChatGPT connection and API key, and your writing prompts and letter template. Your Insider access stays.</p>
+          <p class="meta">Applications already sent to WaterlooWorks are not withdrawn and can’t be prepared again. This can’t be undone.</p>
+          <label>Type <code>reset</code> to confirm<input name="confirm" autocomplete="off" spellcheck="false" required></label>
+          <div class="actions"><button type="submit" class="danger" disabled>Reset account</button></div>
         </form>
       </details>
     </section>
