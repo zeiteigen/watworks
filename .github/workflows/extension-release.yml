@@ -2,6 +2,7 @@ name: Release Chrome extension
 
 on:
   push:
+    branches: [main]
     tags: ["extension-v*"]
   workflow_dispatch:
 
@@ -15,7 +16,7 @@ concurrency:
 jobs:
   release:
     # Releases and signing credentials belong only to the public mirror.
-    if: github.repository == 'zeiteigen/watworks'
+    if: github.repository == 'zeiteigen/watworks' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/extension-v'))
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -27,6 +28,11 @@ jobs:
         with:
           bun-version: "1.4.2"
       - run: bun install --frozen-lockfile
+      # Each main build gets the next version: the committed major.minor with this
+      # workflow's run number as the patch. Tag builds keep the committed version.
+      - name: Number this build
+        if: github.ref == 'refs/heads/main'
+        run: bun scripts/extension-release/stamp-version.ts "$GITHUB_RUN_NUMBER"
       - run: bun run build
       - run: bunx playwright install chromium --with-deps
       - run: bun test
@@ -45,7 +51,8 @@ jobs:
         env:
           KEY_FILE: ${{ runner.temp }}/extension-signing.pem
         run: bun -e 'await import("node:fs/promises").then(fs => fs.rm(process.env.KEY_FILE, {force:true}))'
-      - name: Publish extension release
+      - name: Publish versioned extension release
+        if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -54,3 +61,34 @@ jobs:
           gh release create "extension-v$VERSION" dist/releases/waterlooworks-extension-v* \
             --target "$GITHUB_SHA" --title "WaterlooWorks Chrome extension v$VERSION" \
             --notes-file scripts/extension-release/notes.md
+      - name: Update latest extension release
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          # An older queued build must not replace a newer main snapshot.
+          TIP=$(gh api "repos/$GH_REPO/commits/main" --jq .sha)
+          if [ "$TIP" != "$GITHUB_SHA" ]; then
+            echo "::notice::Skipping superseded extension build $GITHUB_SHA"
+            exit 0
+          fi
+          VERSION=$(bun -e 'console.log((await Bun.file("package.json").json()).version)')
+          mkdir -p latest-assets
+          cp "dist/releases/waterlooworks-extension-v$VERSION.crx" latest-assets/waterlooworks-extension.crx
+          cp "dist/releases/waterlooworks-extension-v$VERSION.zip" latest-assets/waterlooworks-extension.zip
+          (cd latest-assets && sha256sum waterlooworks-extension.crx waterlooworks-extension.zip > waterlooworks-extension.sha256)
+          cp scripts/extension-release/notes.md "$RUNNER_TEMP/extension-notes.md"
+          printf '\nVersion `%s`, built from `%s`. This release is refreshed on public main updates.\n' "$VERSION" "$GITHUB_SHA" >> "$RUNNER_TEMP/extension-notes.md"
+          # Only this rolling tag moves; versioned release tags remain fixed.
+          if gh api "repos/$GH_REPO/git/ref/tags/extension-latest" > /dev/null 2>&1; then
+            gh api --method PATCH "repos/$GH_REPO/git/refs/tags/extension-latest" -f sha="$GITHUB_SHA" -F force=true
+          else
+            gh api --method POST "repos/$GH_REPO/git/refs" -f ref=refs/tags/extension-latest -f sha="$GITHUB_SHA"
+          fi
+          if gh release view extension-latest > /dev/null 2>&1; then
+            gh release upload extension-latest latest-assets/* --clobber
+            gh release edit extension-latest --title "Latest Chrome extension (v$VERSION)" --notes-file "$RUNNER_TEMP/extension-notes.md" --latest
+          else
+            gh release create extension-latest latest-assets/* --verify-tag --title "Latest Chrome extension (v$VERSION)" --notes-file "$RUNNER_TEMP/extension-notes.md" --latest
+          fi
