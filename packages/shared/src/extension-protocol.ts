@@ -3,7 +3,7 @@ import { applicationProgressSchema } from "./application-progress.js";
 
 export const EXTENSION_PROTOCOL_VERSION = 1 as const;
 /** Stable unpacked ID derived from the extension manifest public key. */
-export const EXPECTED_EXTENSION_ID = "gjnfhbkemeoaoflhpbbicnpigekleimj";
+export const EXPECTED_EXTENSION_ID = "onlcepldlajaajfjldnbipkbffaficjh";
 export const EXTENSION_METHODS = [
   "localApplicationRead",
   "getSubmissionStatus",
