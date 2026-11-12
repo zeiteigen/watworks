@@ -14,6 +14,6 @@ export function handlePageMessage(message: unknown, sender: chrome.runtime.Messa
     return isSignInTab(sender.tab.id).then(signingIn => ({signingIn}));
   }
   if (type === 'pageOpenDashboard' && origin === WATERLOOWORKS_ORIGIN) {
-    return chrome.tabs.create({url:chrome.runtime.getURL('dashboard.html')}).then(() => ({opened:true}));
+    return chrome.tabs.create({url:chrome.runtime.getURL('hosted.html')}).then(() => ({opened:true}));
   }
 }

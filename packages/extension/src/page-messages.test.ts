@@ -16,7 +16,7 @@ function fixture() {
 test('page capability opens only the extension dashboard with no page-supplied URL', async()=>{
   const {sender,opened}=fixture();
   await handlePageMessage({type:'pageOpenDashboard',url:'https://evil.test'},sender);
-  expect(opened).toEqual([{url:'chrome-extension://watworks/dashboard.html'}]);
+  expect(opened).toEqual([{url:'chrome-extension://watworks/hosted.html'}]);
 });
 test('content scripts cannot reach privileged messages or cross-origin/frame capabilities',()=>{
   const {sender,opened}=fixture();

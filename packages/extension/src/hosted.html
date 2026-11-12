@@ -27,7 +27,7 @@
       <p id="greeting" class="greeting">Hello.</p>
       <h1 id="home-heading">Loading your workspace…</h1>
       <p id="home-sub" class="meta"></p>
-      <button id="start-review" type="button" class="start" hidden>Start review</button>
+      <div class="home-actions"><button id="start-review" type="button" class="start" hidden>Start review</button><button id="start-setup" type="button" class="start" hidden>Continue setup</button></div>
       <div class="quiet"><button id="quiet-toggle" type="button" class="link" aria-expanded="false" aria-controls="quiet-detail" hidden></button><ul id="quiet-detail" hidden></ul></div>
     </section>
 
@@ -35,6 +35,12 @@
       <div class="session-bar"><button id="leave-session" type="button" class="link">← Leave review</button><span id="session-count"></span><span id="session-arrived" aria-live="polite"></span></div>
       <div class="progress" aria-hidden="true"><i id="session-progress"></i></div>
       <div id="task-stage" class="stage"></div>
+    </section>
+
+    <section id="onboarding-screen" data-screen-panel="onboarding" aria-label="Get set up" hidden>
+      <div class="session-bar"><button id="leave-onboarding" type="button" class="link">← Finish later</button><span id="onboarding-count"></span></div>
+      <div class="progress" aria-hidden="true"><i id="onboarding-progress"></i></div>
+      <div id="onboarding-stage" class="stage"></div>
     </section>
 
     <section id="done-screen" data-screen-panel="done" class="done" aria-labelledby="done-heading" hidden>
@@ -51,10 +57,11 @@
     <section id="setup-screen" data-screen-panel="setup" class="page setup" aria-labelledby="setup-heading" hidden>
       <h1 id="setup-heading">Setup</h1>
       <p id="setup-intro" class="meta"></p>
+      <button id="setup-guided" type="button" class="secondary" hidden>Set up step by step</button>
 
       <details class="setup-section" data-section="connections">
         <summary><span class="name">Connections</span><span class="sum" data-summary="connections"></span></summary>
-        <div class="section-body connection-settings">
+        <div class="section-body connection-settings" data-setup-body="connections">
           <p id="identity" class="meta" aria-live="polite">Checking account…</p>
           <p id="ai-reason" class="meta">Connect ChatGPT or add an API key to enable search and application preparation.</p>
           <button id="chatgpt-connect" type="button">Continue with ChatGPT ↗</button>
@@ -80,13 +87,13 @@
           <label>Fluent languages <span class="hint">Separate with commas</span><input name="fluentLanguages" placeholder="English, French" maxlength="3658"></label>
           <label>Anything else we should know?<textarea name="notes" rows="3" placeholder="Industries, work style, term dates…"></textarea></label>
           <label>Daily search time <span class="hint">Toronto time</span><select name="scheduleHour"></select></label>
-          <div class="actions"><button type="submit">Save</button><span id="saved" class="meta" aria-live="polite"></span></div>
+          <div class="actions" data-setup-only><button type="submit">Save</button><span id="saved" class="meta" aria-live="polite"></span></div>
         </form>
       </details>
 
       <details class="setup-section" data-section="resumes">
         <summary><span class="name">Resumes</span><span class="sum" data-summary="resumes"></span></summary>
-        <div class="section-body">
+        <div class="section-body" data-setup-body="resumes">
           <p class="meta">PDF, smaller than 5 MB each. WatWorks picks the best one for each posting.</p>
           <form id="resume-form" class="resume-upload"><label for="resume-file">Resume PDF<input id="resume-file" type="file" accept="application/pdf,.pdf" required></label><label for="resume-name">Name<input id="resume-name" placeholder="Resume name"></label><button type="submit">Upload</button></form>
           <ul id="resumes" class="resume-list"></ul>
@@ -99,7 +106,7 @@
           <p class="meta">Projects, accomplishments and stories that don't fit on your resume. Reviewed screening answers are remembered here too. Saving never calls AI.</p>
           <label>Detailed background notes<textarea name="backgroundNotes" rows="10" maxlength="30000" placeholder="Projects, skills, outcomes, stories for cover letters…"></textarea></label>
           <div id="working-memory"></div>
-          <button type="submit">Save background notes</button>
+          <button type="submit" data-setup-only>Save background notes</button>
         </form>
       </details>
 

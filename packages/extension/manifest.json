@@ -2,13 +2,11 @@
   "manifest_version": 3,
   "name": "WaterlooWorks Workspace",
   "version": "1.1.0",
-  "description": "Workspace access, browser applications, sign-in assistance, and independent daily job discovery.",
+  "description": "Hosted WatWorks workspace, WaterlooWorks sign-in assistance, and daily job search.",
   "permissions": [
     "alarms",
     "storage",
-    "notifications",
     "scripting",
-    "nativeMessaging",
     "cookies"
   ],
   "host_permissions": [
@@ -39,10 +37,6 @@
     "32": "icon32.png",
     "48": "icon48.png",
     "128": "icon128.png"
-  },
-  "options_ui": {
-    "page": "submission-settings.html",
-    "open_in_tab": true
   },
   "content_scripts": [
     {

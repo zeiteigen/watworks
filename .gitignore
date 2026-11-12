@@ -10,14 +10,13 @@ waterlooworks-har-report*.json
 .env.*
 *.log
 
-# Personal workspace: profile, resumes, cover letters, saved jobs.
-/data/*
-!/data/README.md
+# Personal files left by the retired local workspace: profile, resumes, saved jobs.
+/data/
 
-# Tools downloaded by `bun run setup` (Tectonic).
+# Local tools and keys, such as the extension signing key backup.
 /.tools/
 
-# Per-user Claude Code settings; .claude/skills is a committed link.
+# Per-user Claude Code settings.
 /.claude/settings.local.json
 
 # Browser inspection artifacts can contain authenticated page data.

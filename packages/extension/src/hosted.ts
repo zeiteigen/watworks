@@ -26,7 +26,9 @@ function message(text: string, tone: Tone = "info"): void {
   status.textContent = text; status.classList.toggle("error", tone === "error" && text !== "");
   status.setAttribute("role", tone === "error" ? "alert" : "status");
 }
-const showWorkspace = createFocusView(document, refreshQueue, message);
+const focus = createFocusView(document, refreshQueue, message), showWorkspace = focus.show;
+/** Onboarding borrows Setup's forms and moves on only when the save went through. */
+function settled(form: HTMLFormElement, ok: boolean): void { form.dispatchEvent(new CustomEvent(ok ? "setup-saved" : "setup-failed")); }
 const showAi = createAiSettings(document, message, refreshQueue);
 const loadLetterSettings = createLetterSettings(document, message);
 // The review mode changes how resume changes render, so the queue reloads after a save.
@@ -97,7 +99,8 @@ $("#context-form").addEventListener("submit", async event => {
   try {
     await hostedRequest("/context", { method: "POST", body: JSON.stringify({ backgroundNotes: values.get("backgroundNotes"), workingMemory: values.get("workingMemory") }) });
     message("Background and working memory saved for future preparation.");
-  } catch (error) { message(error instanceof Error ? error.message : String(error), "error"); }
+    settled(form, true);
+  } catch (error) { message(error instanceof Error ? error.message : String(error), "error"); settled(form, false); }
   finally { button.disabled = false; }
 });
 function showAccount(account: InsiderAccount): void {
@@ -162,8 +165,8 @@ const profileForm = $("#profile-form") as HTMLFormElement;
 options(profileForm.elements.namedItem("scheduleHour") as HTMLSelectElement);
 profileForm.addEventListener("submit", async event => {
   event.preventDefault(); const button = profileForm.querySelector<HTMLButtonElement>("button[type=submit]")!; button.disabled = true;
-  try { const profile = profileFromForm(profileForm); await hostedRequest("/profile", { method: "POST", body: JSON.stringify(profile) }); await refreshQueue(); $("#saved").textContent = "Saved"; message("Your profile is saved."); }
-  catch (error) { message(error instanceof Error ? error.message : String(error), "error"); }
+  try { const profile = profileFromForm(profileForm); await hostedRequest("/profile", { method: "POST", body: JSON.stringify(profile) }); await refreshQueue(); $("#saved").textContent = "Saved"; message("Your profile is saved."); settled(profileForm, true); }
+  catch (error) { message(error instanceof Error ? error.message : String(error), "error"); settled(profileForm, false); }
   finally { button.disabled = false; }
 });
 $("#resume-form").addEventListener("submit", async event => {
@@ -216,6 +219,7 @@ resetForm.addEventListener("submit", async event => {
     resetForm.reset(); pendingPostings.clear();
     for (const section of document.querySelectorAll<HTMLDetailsElement>(".setup-section")) section.open = false;
     await load();
+    focus.onboard();
     message("Your account was reset. Your Insider access is unchanged.");
   } catch (error) { message(error instanceof Error ? error.message : String(error), "error"); }
   finally { resetButton.textContent = "Reset account"; resetButton.disabled = resetConfirm.value.trim().toLowerCase() !== "reset"; }

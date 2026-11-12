@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
-import { getHostedAccount, getInsiderAccount } from "./insider-account.js";
+import { getHostedAccount } from "./insider-account.js";
 import { hostedRequest } from "./hosted-client.js";
 import { prepareHostedSubmissionSession } from "./hosted-session.js";
 import { confirmSubmission, hostedJobPending } from "./hosted-queue.js";
-import { HOSTED_INSIDER_SESSION_KEY, INSIDER_SESSION_KEY } from "./insider-session.js";
+import { HOSTED_INSIDER_SESSION_KEY } from "./insider-session.js";
 import { browserResearch } from "./research.js";
 
 const endpoint = "https://watworks.alishahzad.dev";
@@ -20,7 +20,7 @@ function storage(data: Record<string, unknown>) {
 }
 beforeEach(() => {
   local = { "submission:settings": { endpoint: "http://127.0.0.1:39453", headers: { authorization: "Bearer local-secret" }, revision: crypto.randomUUID() } };
-  session = { [INSIDER_SESSION_KEY]: { localEvidence: "preserve" } }; requests = []; invited = true; authStatus = 200; importStatus = 200;
+  session = {}; requests = []; invited = true; authStatus = 200; importStatus = 200;
   const cookie = crypto.randomUUID();
   Object.defineProperty(globalThis, "chrome", { configurable: true, value: { storage: { local: storage(local), session: storage(session) }, cookies: { getAll: async () => [{ name: "session", value: cookie, domain: "waterlooworks.uwaterloo.ca", path: "/", secure: true, httpOnly: true, sameSite: "lax" }] } } });
   Object.defineProperty(globalThis, "navigator", { configurable: true, value: { userAgent: "Test browser", locks: { request: async (_name: string, _options: unknown, task: () => Promise<void>) => task() } } });
@@ -50,16 +50,9 @@ test("hosted workspace recognizes a grant independently of the local endpoint an
   const saved = structuredClone(local);
   expect(await hostedRequest()).toHaveProperty("jobs");
   expect(session[HOSTED_INSIDER_SESSION_KEY]).toMatchObject({ endpoint, email: "student@uwaterloo.ca" });
-  expect(session[INSIDER_SESSION_KEY]).toEqual({ localEvidence: "preserve" });
   expect(local).toEqual(saved);
   expect(requests.every(request => !request.url.startsWith("http://127.0.0.1"))).toBe(true);
   expect(requests.some(request => new Headers(request.init?.headers).get("authorization") === "Bearer local-secret")).toBe(false);
-});
-
-test("simultaneous local and hosted recognition cannot share a pending account result", async () => {
-  const [localAccount, hostedAccount] = await Promise.all([getInsiderAccount(), getHostedAccount()]);
-  expect(localAccount).toMatchObject({ insider: false, selfHosted: true });
-  expect(hostedAccount).toMatchObject({ insider: true, email: "student@uwaterloo.ca" });
 });
 
 test("refresh immediately picks up an admin grant despite a cached denial", async () => {

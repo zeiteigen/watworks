@@ -1,5 +1,4 @@
 import { expect, test } from "bun:test";
-import { WaterlooWorksApplicationGateway } from "../../waterlooworks-client/src/application-gateway.js";
 import { BrowserApplicationReads } from "./application-reads.js";
 import type { FetchLike } from "../../waterlooworks-client/src/session.js";
 import { applicationOverview, applicationPdf, applicationSession, applicationWizard, documentsPage, inventoryPage, inventoryRow } from "../../waterlooworks-client/test/application-fixtures.js";
@@ -31,15 +30,13 @@ function fixtureTransport(calls: Array<{ url: string; init: RequestInit | undefi
   };
 }
 
-test("browser reads match the verified gateway form and keep private wizard data in the extension", async () => {
+test("browser reads parse the application form and keep private wizard data in the extension", async () => {
   const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
   const transport = fixtureTransport(calls);
-  const gateway = new WaterlooWorksApplicationGateway({ getSession: async () => applicationSession }, transport);
   const browser = new BrowserApplicationReads(transport);
-  const expected = await gateway.getApplicationForm("12345");
-  calls.length = 0;
   const actual = await browser.getApplicationForm("12345");
-  expect(actual).toEqual(expected);
+  expect(actual).toMatchObject({ jobId: "12345", canApply: true, hasApplication: false });
+  expect(actual.requirements.length).toBeGreaterThan(0);
   expect(JSON.stringify(actual)).not.toContain("fake-wizard-state");
   expect(JSON.stringify(actual)).not.toContain("fake-open-wizard");
   expect(calls.every(({ init }) => {

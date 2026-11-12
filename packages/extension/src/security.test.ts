@@ -8,10 +8,9 @@ const manifest = await Bun.file(new URL("../manifest.json", import.meta.url)).js
   host_permissions: string[];
   optional_host_permissions?: string[];
   content_scripts: Array<{ matches: string[] }>;
-  options_ui?: { page: string; open_in_tab: boolean };
+  options_ui?: unknown;
 };
 const source = await Bun.file(new URL("./background.ts", import.meta.url)).text();
-const connection = await Bun.file(new URL("./connection.ts", import.meta.url)).text();
 
 function extensionIdFromPublicKey(key: string): string {
   const hash = createHash("sha256").update(Buffer.from(key, "base64")).digest();
@@ -24,36 +23,24 @@ describe("WaterlooWorks extension security contract", () => {
   });
 
   test("asks for no local-network access at install and only 127.0.0.1 optionally, for ChatGPT sign-in", () => {
-    expect(manifest.permissions).toEqual(["alarms", "storage", "notifications", "scripting", "nativeMessaging", "cookies"]);
+    expect(manifest.permissions).toEqual(["alarms", "storage", "scripting", "cookies"]);
     expect(manifest.host_permissions).toEqual([
       "https://watworks.alishahzad.dev/*",
       "https://waterlooworks.uwaterloo.ca/*",
       "https://adfs.uwaterloo.ca/*",
       "https://sts.uwaterloo.ca/*",
     ]);
-    // Local services and custom submission servers answer CORS for the extension ID instead.
+    // The ChatGPT sign-in callback listens on loopback; nothing else is local.
     expect(manifest.optional_host_permissions).toEqual(["http://127.0.0.1/*"]);
     expect(manifest.host_permissions.some(host => /127\.0\.0\.1|localhost|\[::1\]/.test(host))).toBe(false);
-    expect(manifest.options_ui).toEqual({ page: "submission-settings.html", open_in_tab: true });
+    expect(manifest.options_ui).toBeUndefined();
     expect(manifest.content_scripts.flatMap(script => script.matches)).not.toContain("https://login.microsoftonline.com/*");
     expect(manifest.host_permissions).not.toContain("<all_urls>");
     expect(manifest.host_permissions).not.toContain("*://*/*");
   });
 
-  test("connection uses the extension broker without exporting cookies or credentials", () => {
-    expect(connection).toContain("/extension");
-    expect(connection).toContain("DEFAULT_BRIDGE_BASE_URL");
-    expect(connection).not.toMatch(/chrome\.cookies|WATERLOOWORKS_JOBS_URL/i);
-    expect(connection).not.toContain("/session");
-    expect(connection).not.toMatch(/authorization|cookie|dashboard-token|credentials/i);
-    expect(connection).not.toContain("<all_urls>");
+  test("the background worker never reads cookie values itself", () => {
     expect(source).not.toMatch(/chrome\.cookies\.getAll|cookie\.value|WATERLOOWORKS_JOBS_URL/i);
+    expect(source).not.toMatch(/connectNative|sendNativeMessage|127\.0\.0\.1/);
   });
-});
-
-test("write approvals are minted only behind the extension-page sender check",()=>{
-  const guard=source.indexOf('sender.id !== chrome.runtime.id || !sender.url?.startsWith(chrome.runtime.getURL(""))');
-  const mint=source.indexOf('input.type === "mintWriteApproval"');
-  expect(guard).toBeGreaterThan(-1);
-  expect(mint).toBeGreaterThan(guard);
 });

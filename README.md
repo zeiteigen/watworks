@@ -1,11 +1,11 @@
 # WatWorks
 
-This repository is a one-way public mirror of the local workspace and Chrome
-extension. Changes are maintained in the upstream source repository; public
-commits may be replaced by the next snapshot. Submission server, hosted proxy,
-and website source are excluded.
+This repository is a one-way public mirror of the WatWorks Chrome extension and
+the shared code it builds from. Changes are maintained in the upstream source
+repository; public commits may be replaced by the next snapshot. Submission
+server, hosted proxy, and website source are excluded.
 
-## Hosted workspace (recommended)
+## Install
 
 Download the ZIP from the [latest extension release](https://github.com/zeiteigen/watworks/releases/tag/extension-latest),
 extract it to a permanent folder, and load the folder containing `manifest.json`
@@ -22,15 +22,12 @@ writes are never retried automatically; external employer-site steps remain your
 to complete. Hosted profile and materials are stored on the service, and relevant
 application data is sent to your connected AI provider.
 
-No Bun, Git, local agent, LaTeX or native startup helper is needed for this path.
-To update, download the new ZIP, replace the installed files and reload the
+No Bun, Git or LaTeX is needed. To update, download the new ZIP, replace the installed files and reload the
 extension once no application is running. Unpacked installs do not update themselves.
 
-## Advanced local setup
+## Building from source
 
-The popup's `debug` shortcut reveals the local workspace tools.
-
-Install [Bun](https://bun.sh) 1.4.2 or later, Git, and a Chromium-based browser.
+Install [Bun](https://bun.sh) 1.4.2 or later and Git, then:
 
 ```sh
 git clone https://github.com/zeiteigen/watworks.git
@@ -39,33 +36,12 @@ bun run setup
 ```
 
 Load `dist/packages/extension` with **Load unpacked** in `chrome://extensions`
-with Developer mode enabled. Open the popup and sign in to WaterlooWorks.
-Setup installs the native startup helper, prepares LaTeX, and creates the private
-`data/` workspace. Run `bun run setup -- --skip-latex` to skip the LaTeX download.
-
-Start Claude Code or Codex from this directory and trust the project's MCP
-configuration. Run `/onboard` (Codex: `$onboard`), then `/job-search`
-(Codex: `$job-search`) to prepare applications. `/apply-job` prepares one posting;
-`/create-job-doc` and `/tailor-resume` manage application materials.
-
-Open **Advanced local dashboard** from the extension to review materials and approve applications.
-Applying and scheduled discovery require a configured [submission service](docs/submission-server.md).
-Local research and document preparation use your signed-in browser.
-Agents must never approve applications or operate dashboard approval controls.
-
-## Updating the local workspace
-
-```sh
-bun run update
-```
-
-This downloads the latest version, reinstalls dependencies and rebuilds
-`dist/packages/extension`. It stops without changing anything if you edited
-tracked files, and never touches `data/`. Afterwards, reload **WaterlooWorks
-Workspace** in `chrome://extensions` (reloading a WaterlooWorks tab is not
-enough) and restart Claude Code or Codex. Wait until no application is uploading
-or submitting first. `bun run update -- --no-pull` rebuilds without downloading;
-`--latex` also refreshes LaTeX.
+with Developer mode enabled. `bun run update` later downloads the latest version
+and rebuilds the extension; it stops without changing anything if you edited
+tracked files. Afterwards, reload **WaterlooWorks Workspace** in
+`chrome://extensions` (reloading a WaterlooWorks tab is not enough), once no
+application is uploading or submitting. `bun run update -- --no-pull` rebuilds
+without downloading.
 
 ## Development
 
@@ -76,10 +52,9 @@ bunx playwright install chromium --with-deps
 bun test
 ```
 
-The extension dashboard, local MCP server, workspace, native startup helper, and
-shared parsing/validation packages are included. Personal profiles, resumes,
-application records, cookies, build output, and server implementation are excluded.
-Runtime workspace files live in gitignored `data/`.
+The extension and its shared parsing, validation and document-rendering packages
+are included. Personal profiles, resumes, application records, cookies, build
+output, and server implementation are excluded.
 
 ## Extension downloads
 
@@ -87,11 +62,9 @@ Signed CRX, unpacked ZIP, and checksums are available from
 [GitHub Releases](https://github.com/zeiteigen/watworks/releases). For Windows
 and macOS developer installs, extract the ZIP and load its folder unpacked.
 Chrome normally requires Web Store distribution for packed extensions there.
-Only the advanced local workspace and native startup helper require `bun run setup`.
 The latest release refreshes automatically after validated public `main` updates;
 versioned `extension-v<version>` releases are also available.
 
 The signing identity is `onlcepldlajaajfjldnbipkbffaficjh`. If updating from the
-older unpacked ID, update your workspace, run setup, reinstall the extension,
-and restart the local service when no application is active. Sign in and
-configure the new extension again; your local `data/` workspace stays in place.
+older unpacked ID, reinstall the extension when no application is active, then
+sign in again.

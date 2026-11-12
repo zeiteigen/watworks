@@ -30,12 +30,12 @@ async function fixture(overrides: Partial<HostedWorkspace> = {}) {
     get(this: HTMLSelectElement) { return [...this.options].find(option => option.selected)?.value ?? this.options[0]?.value ?? ""; },
     set(this: HTMLSelectElement, value: string) { for (const option of this.options) option.selected = option.value === value; } });
   Object.defineProperty(globalThis, "document", { configurable: true, value: document });
-  const show = createFocusView(document as unknown as Document, () => {}, () => {});
+  const view = createFocusView(document as unknown as Document, () => {}, () => {}), show = view.show;
   const workspace: HostedWorkspace = { profile, resumes: [{ id: "r", name: "Software resume", size: 1 }], runs: [], ai: { available: true, connected: true, reason: "" }, jobs, ...overrides };
   show(workspace);
   const $ = (selector: string) => document.querySelector<HTMLElement>(selector)!;
   const buttons = (text: string) => [...document.querySelectorAll<HTMLButtonElement>("button")].filter(item => item.textContent === text);
-  return { document, show, workspace, $, buttons, click: (selector: string) => $(selector).click(), visible: (selector: string) => !$(selector).hidden };
+  return { document, window: dom.window, view, show, workspace, $, buttons, click: (selector: string) => $(selector).click(), visible: (selector: string) => !$(selector).hidden };
 }
 
 test("home says only how much needs you, and the review starts with the most urgent task", async () => {
@@ -110,16 +110,73 @@ test("the review ends with a summary, and All jobs opens one job with a way back
   expect(f.visible("#jobs-screen")).toBe(true);
 });
 
-test("a first visit opens Setup on what is missing, without onboarding tabs or a work term field", async () => {
-  const f = await fixture({ profile: null, resumes: [], jobs: [], ai: { available: false, connected: false, reason: "" } });
-  expect(f.visible("#setup-screen")).toBe(true);
+const empty = { profile: null, resumes: [], jobs: [], ai: { available: false, connected: false, reason: "" } } satisfies Partial<HostedWorkspace>;
+
+test("a first visit walks through setup one card at a time, on Setup's own forms", async () => {
+  const f = await fixture(empty);
+  expect(f.visible("#onboarding-screen")).toBe(true);
+  expect(f.visible("#ai-alert")).toBe(false);
+  expect(f.$("#onboarding-count").textContent).toBe("1 of 4");
+  const title = () => f.$("#onboarding-stage .task-title").textContent;
+  expect(title()).toBe("Connect ChatGPT");
+  // Not connected yet: the ChatGPT button in the card is the action, and the footer offers only Skip.
+  expect(f.$("#onboarding-stage").contains(f.$("#chatgpt-connect"))).toBe(true);
+  expect(f.document.querySelector("#onboarding-stage .task-actions .primary")).toBeNull();
+  // Connecting in another tab turns the same card into Continue.
+  f.show({ ...f.workspace, ai: { available: true, connected: true, chatgptConnected: true, reason: "" } });
+  f.buttons("Continue")[0]!.click();
+  expect(title()).toBe("What are you looking for?");
+  expect(f.$("#onboarding-progress").style.width).toBe("25%");
+  const form = f.$("#profile-form");
+  expect(f.$("#onboarding-stage").contains(form)).toBe(true);
+  expect(form.querySelector("[data-setup-only]")).not.toBeNull();
+  // The card moves on only when the form's own handler reports the save.
+  form.dispatchEvent(new f.window.CustomEvent("setup-failed"));
+  expect(title()).toBe("What are you looking for?");
+  form.dispatchEvent(new f.window.CustomEvent("setup-saved"));
+  expect(title()).toBe("Add your resume");
+  // The form went back to Setup.
+  expect(f.$('[data-section="profile"]').contains(form)).toBe(true);
+  expect(f.buttons("Continue").length).toBe(0);
+  f.show({ ...f.workspace, ai: { available: true, connected: true, reason: "" }, profile, resumes: [{ id: "r", name: "Software resume", size: 1 }] });
+  f.buttons("Continue")[0]!.click();
+  expect(title()).toBe("Anything your resume leaves out?");
+  f.buttons("Skip for now")[0]!.click();
+  expect(title()).toBe("You’re set up.");
+  expect(f.$('[data-section="background"]').contains(f.$("#context-form"))).toBe(true);
+  expect(f.buttons("Run today’s search").length).toBe(2);
+});
+
+test("skipped steps are listed at the end, and Finish setting up returns to only those", async () => {
+  const f = await fixture(empty);
+  for (let index = 0; index < 4; index++) f.$("#onboarding-stage .leave").click();
+  expect(f.$("#onboarding-stage .task-title").textContent).toBe("3 steps are left");
+  expect(f.$("#onboarding-stage .blockers").textContent).toBe("Connect ChatGPT or add an API keySay what you’re looking forAdd a resume");
+  f.buttons("Finish setting up")[0]!.click();
+  expect(f.$("#onboarding-count").textContent).toBe("1 of 3");
+  f.click("#leave-onboarding");
+  expect(f.visible("#home-screen")).toBe(true);
+  expect(f.$('[data-section="connections"]').contains(f.$("#chatgpt-connect"))).toBe(true);
+  expect(f.$("#home-heading").textContent).toBe("Let’s get you set up.");
+  expect(f.visible("#start-setup")).toBe(true);
+  f.click('.nav [data-screen="setup"]');
   expect(f.$("#setup-intro").textContent).toBe("3 things are missing before WatWorks can apply for you.");
   for (const section of ["connections", "profile", "resumes"]) expect(f.$(`[data-section="${section}"]`).hasAttribute("open")).toBe(true);
   expect(f.$('[data-section="prompts"]').hasAttribute("open")).toBe(false);
-  expect(f.document.querySelector("#profile-form [name=eightMonthEligible]")).not.toBeNull();
   expect(f.document.querySelector('[name="workTerm"]')).toBeNull();
-  expect(f.visible("#ai-alert")).toBe(true);
-  expect(f.document.querySelector("[data-tab]")).toBeNull();
+  f.click("#setup-guided");
+  expect(f.$("#onboarding-stage .task-title").textContent).toBe("Connect ChatGPT");
+});
+
+test("a set-up workspace opens on home, and reset can start onboarding again", async () => {
+  const f = await fixture();
+  expect(f.visible("#home-screen")).toBe(true);
+  expect(f.visible("#start-setup")).toBe(false);
+  f.click('.nav [data-screen="setup"]');
+  expect(f.visible("#setup-guided")).toBe(false);
+  f.show({ ...f.workspace, ...empty });
+  f.view.onboard();
+  expect(f.$("#onboarding-count").textContent).toBe("1 of 4");
 });
 
 test("a reason the server saved for a turned-away submission shows on the card and in All jobs", async () => {

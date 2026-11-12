@@ -3,18 +3,26 @@ import type { HostedWorkspace } from "./hosted-client.js";
 import { hostedJobNotice, jobEmployer, jobTitle, type HostedJob, type WriteHooks } from "./hosted-queue.js";
 import { cardKey, renderTaskCard } from "./hosted-task-card.js";
 import { dueLabel, externalSteps, hostedTask, needsYou, sortTasks } from "./hosted-tasks.js";
+import { missingSetup, onboardingSteps, renderSetupCard, renderSetupDone, setupCardKey, type SetupStep } from "./hosted-onboarding.js";
 import { normalizeReviewMode } from "../../shared/src/resume-changes.js";
 
-type Screen = "home" | "session" | "done" | "jobs" | "setup";
+type Screen = "home" | "session" | "done" | "jobs" | "setup" | "onboarding";
 interface Session { queue: string[]; index: number; arrived: number; returned: Set<string>; approved: Set<string>; submitted: Set<string>; single: boolean }
+interface Onboarding { queue: SetupStep[]; index: number }
+export interface FocusView {
+  show(workspace: HostedWorkspace): void;
+  /** Walks through whatever Setup is missing, one card at a time. */
+  onboard(): void;
+}
 
 /**
  * Focus: the user never manages a queue. Home says how much needs them; a review walks
  * through one task at a time. Writes stay inside each step; this file only navigates.
  */
-export function createFocusView(root: Document, refresh: () => void | Promise<void>, report: (message: string, tone?: Tone) => void): (workspace: HostedWorkspace) => void {
+export function createFocusView(root: Document, refresh: () => void | Promise<void>, report: (message: string, tone?: Tone) => void): FocusView {
   const $ = <T extends HTMLElement>(selector: string) => root.querySelector<T>(selector)!;
   let workspace: HostedWorkspace | undefined, screen: Screen = "home", session: Session | undefined, renderedKey: string | undefined, setupOpened = false;
+  let onboarding: Onboarding | undefined, setupKey: string | undefined, releaseSetup: (() => void) | undefined;
   const openGroups = new Set(["you"]);
   const hooks: WriteHooks = { refresh, progress: () => render(), report: (message, tone, jobId) => {
     // The card on screen already shows its own outcome; the page-wide line is for everything else.
@@ -29,6 +37,7 @@ export function createFocusView(root: Document, refresh: () => void | Promise<vo
 
   function go(next: Screen): void {
     if (next !== "session") { session = undefined; renderedKey = undefined; }
+    if (next !== "onboarding") { onboarding = undefined; closeSetupCard(); }
     // A message about the last screen would read as one about this one.
     screen = next; report(""); render();
     root.defaultView?.scrollTo?.({ top: 0 });
@@ -38,7 +47,18 @@ export function createFocusView(root: Document, refresh: () => void | Promise<vo
     session = { queue: ids, index: 0, arrived: 0, returned: new Set(), approved: new Set(), submitted: new Set(), single };
     screen = "session"; renderedKey = undefined; render(); focusTitle();
   }
-  function focusTitle(): void { root.querySelector<HTMLElement>("#task-stage .task-title")?.focus(); }
+  function focusTitle(): void { root.querySelector<HTMLElement>(`#${screen === "onboarding" ? "onboarding" : "task"}-stage .task-title`)?.focus(); }
+  /** Gives a borrowed form back to Setup before its card leaves the page. */
+  function closeSetupCard(): void { releaseSetup?.(); releaseSetup = undefined; setupKey = undefined; }
+  function onboard(steps = workspace ? onboardingSteps(workspace) : []): void {
+    session = undefined; renderedKey = undefined; closeSetupCard();
+    onboarding = { queue: steps, index: 0 }; screen = "onboarding"; report(""); render();
+    root.defaultView?.scrollTo?.({ top: 0 }); focusTitle();
+  }
+  function nextSetupStep(): void {
+    if (!onboarding) return;
+    onboarding.index++; closeSetupCard(); render(); focusTitle();
+  }
   /** Moves past tasks that stopped needing the user while they were waiting in line. */
   function next(): void {
     if (!session) return;
@@ -59,29 +79,34 @@ export function createFocusView(root: Document, refresh: () => void | Promise<vo
     else if (screen === "session") renderSession();
     else if (screen === "done") renderDone();
     else if (screen === "jobs") renderJobs();
+    else if (screen === "onboarding") renderOnboarding();
     renderSetup();
   }
 
   function renderAlerts(): void {
     const ai = workspace!.ai, alert = $("#ai-alert");
-    alert.hidden = ai.available === true;
+    // Onboarding is already asking for the connection.
+    alert.hidden = ai.available === true || screen === "onboarding";
     alert.querySelector("span")!.textContent = ai.reason || "Connect ChatGPT or add an API key to search and prepare applications.";
   }
 
   function renderHome(): void {
-    const all = jobs(), waiting = needsYou(all), minutes = waiting.reduce((sum, job) => sum + hostedTask(job).minutes, 0);
+    const all = jobs(), waiting = needsYou(all), minutes = waiting.reduce((sum, job) => sum + hostedTask(job).minutes, 0), missing = missingSetup(workspace!);
     const hour = new Date().getHours();
     $("#greeting").textContent = hour < 12 ? "Good morning." : hour < 18 ? "Good afternoon." : "Good evening.";
     const heading = $("#home-heading"); heading.replaceChildren();
     if (waiting.length) {
       heading.append(`${waiting.length} ${waiting.length === 1 ? "thing needs" : "things need"} you`);
       const time = root.createElement("span"); time.className = "minutes"; time.textContent = ` · about ${minutes} ${minutes === 1 ? "minute" : "minutes"}`; heading.appendChild(time);
-    } else heading.textContent = "Nothing needs you right now.";
+    } else heading.textContent = missing.length ? "Let’s get you set up." : "Nothing needs you right now.";
     const working = all.filter(job => hostedTask(job).owner === "watworks"), sent = all.filter(job => job.status === "submitted"), steps = sent.filter(job => externalSteps(job).length);
     const first = waiting[0];
     $("#home-sub").textContent = first ? `One at a time, most urgent first. First up: ${jobEmployer(first)}${dueLabel(first) ? `, ${dueLabel(first)}` : ""}.`
+      : missing.length ? `${missing.length} ${missing.length === 1 ? "step is" : "steps are"} left before WatWorks can search and apply for you. It takes a few minutes.`
       : working.length ? "WatWorks is preparing applications. They appear here when they need you." : "Run today's search to find new matches.";
     $<HTMLButtonElement>("#start-review").hidden = !waiting.length;
+    const setup = $<HTMLButtonElement>("#start-setup");
+    setup.hidden = !missing.length; setup.classList.toggle("secondary", waiting.length > 0);
     const parts = [working.length ? `WatWorks is preparing ${working.length} more` : "", steps.length ? `${steps.length} ${steps.length === 1 ? "step" : "steps"} left on employer sites` : "", sent.length ? `${sent.length} sent` : ""].filter(Boolean);
     const quiet = $<HTMLButtonElement>("#quiet-toggle"), detail = $("#quiet-detail");
     quiet.hidden = !parts.length; quiet.textContent = parts.join(" · ");
@@ -122,6 +147,27 @@ export function createFocusView(root: Document, refresh: () => void | Promise<vo
       onAdvance: () => { current.approved.add(job.jobId); if (current.single) go("jobs"); else next(); },
       onLeave: () => { if (current.single) go("jobs"); else next(); },
     }));
+  }
+
+  function renderOnboarding(): void {
+    if (!onboarding) { go("home"); return; }
+    const { queue, index } = onboarding, step = queue[index];
+    $("#onboarding-count").textContent = step ? `${index + 1} of ${queue.length}` : "";
+    $("#onboarding-progress").style.width = queue.length ? `${(Math.min(index, queue.length) / queue.length) * 100}%` : "100%";
+    const key = setupCardKey(step, workspace!);
+    if (key === setupKey) return;
+    closeSetupCard(); setupKey = key;
+    const stage = $("#onboarding-stage");
+    if (!step) {
+      stage.replaceChildren(renderSetupDone(workspace!, {
+        onFinish: () => onboard(missingSetup(workspace!)),
+        onSearch: () => { go("home"); root.querySelector<HTMLButtonElement>("#daily-launch")?.click(); },
+        onHome: () => go("home"),
+      }));
+      return;
+    }
+    const card = renderSetupCard(root, step, workspace!, { position: index + 1, total: queue.length, onNext: nextSetupStep });
+    releaseSetup = card.release; stage.replaceChildren(card.element);
   }
 
   function renderDone(): void {
@@ -177,6 +223,7 @@ export function createFocusView(root: Document, refresh: () => void | Promise<vo
     for (const [key, isMissing] of Object.entries(missing)) root.querySelector(`[data-section="${key}"]`)?.classList.toggle("missing", isMissing);
     const count = Object.values(missing).filter(Boolean).length;
     $("#setup-intro").textContent = count ? `${count} ${count === 1 ? "thing is" : "things are"} missing before WatWorks can apply for you.` : "Everything WatWorks needs is set. Open a section to change it.";
+    $<HTMLButtonElement>("#setup-guided").hidden = !count;
     // Missing sections open once; after that the user decides what stays open.
     if (!setupOpened) {
       setupOpened = true;
@@ -186,6 +233,9 @@ export function createFocusView(root: Document, refresh: () => void | Promise<vo
 
   for (const link of root.querySelectorAll<HTMLElement>("[data-screen]")) link.addEventListener("click", () => go(link.dataset.screen as Screen));
   $("#start-review").addEventListener("click", () => start(needsYou(jobs()).map(job => job.jobId)));
+  $("#start-setup").addEventListener("click", () => onboard());
+  $("#setup-guided").addEventListener("click", () => onboard());
+  $("#leave-onboarding").addEventListener("click", () => go("home"));
   $("#done-home").addEventListener("click", () => go("home"));
   $("#leave-session").addEventListener("click", () => go(session?.single ? "jobs" : "home"));
   $("#quiet-toggle").addEventListener("click", () => {
@@ -203,17 +253,25 @@ export function createFocusView(root: Document, refresh: () => void | Promise<vo
       const menu = root.querySelector<HTMLDetailsElement>("details.more[open]");
       if (menu) { menu.removeAttribute("open"); menu.querySelector("summary")?.focus(); return; }
       if (screen === "session" && !typing) go(session?.single ? "jobs" : "home");
+      if (screen === "onboarding" && !typing) go("home");
       return;
     }
     if (screen === "session" && !typing && !event.metaKey && !event.ctrlKey && !event.altKey && event.key.toLowerCase() === "s") {
       event.preventDefault(); root.querySelector<HTMLButtonElement>("#task-stage .leave, #task-stage .task-actions .primary:only-child")?.click();
     }
+    if (screen === "onboarding" && !typing && !event.metaKey && !event.ctrlKey && !event.altKey && event.key.toLowerCase() === "s") {
+      event.preventDefault(); root.querySelector<HTMLButtonElement>("#onboarding-stage .task-card:not(.setup-done) .leave")?.click();
+    }
   });
 
-  return next => {
-    const first = !workspace;
-    workspace = next;
-    if (first && !next.profile) screen = "setup";
-    render();
+  return {
+    show: next => {
+      const first = !workspace;
+      workspace = next;
+      // A first visit with anything missing walks through it instead of landing on an empty home.
+      if (first && missingSetup(next).length) { onboarding = { queue: onboardingSteps(next), index: 0 }; screen = "onboarding"; }
+      render();
+    },
+    onboard: () => onboard(),
   };
 }

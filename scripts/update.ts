@@ -1,12 +1,11 @@
 #!/usr/bin/env bun
 /**
  * Updates a source checkout: fast-forwards to the latest published snapshot, then re-runs
- * setup in a fresh process (dependencies, extension build, native startup helper, data/
- * workspace, skill links) so steps added by the update itself also run.
+ * setup in a fresh process (dependencies and extension build) so steps added by the update
+ * itself also run.
  *
  *   bun run update                pull the latest version and rebuild
  *   bun run update -- --no-pull   rebuild the current checkout only
- *   bun run update -- --latex     also refresh the LaTeX (Tectonic) setup
  *
  * Personal files in data/ are gitignored and never touched. Local edits to tracked files
  * stop the update; it never resets, stashes or discards anything itself.
@@ -87,8 +86,8 @@ function systemGit(args: string[]): GitResult {
 
 async function main(): Promise<void> {
   const args = new Set(process.argv.slice(2));
-  const unknown = [...args].filter(arg => !["--no-pull", "--latex"].includes(arg));
-  if (unknown.length) throw new UpdateError(`Unknown option ${unknown.join(", ")}. Use --no-pull and/or --latex.`);
+  const unknown = [...args].filter(arg => arg !== "--no-pull");
+  if (unknown.length) throw new UpdateError(`Unknown option ${unknown.join(", ")}. Use --no-pull.`);
 
   if (!args.has("--no-pull")) {
     console.log("==> Downloading the latest version");
@@ -102,7 +101,7 @@ async function main(): Promise<void> {
   }
 
   // A fresh process runs the setup script as it exists after the pull.
-  const setup = Bun.spawnSync([process.execPath, "scripts/setup.ts", "--update", ...(args.has("--latex") ? ["--latex"] : [])],
+  const setup = Bun.spawnSync([process.execPath, "scripts/setup.ts", "--update"],
     { cwd: root, stdout: "inherit", stderr: "inherit" });
   if (setup.exitCode !== 0) throw new UpdateError("Rebuilding failed (see above). The previous extension build may be incomplete; fix the error and run `bun run update -- --no-pull`.");
 

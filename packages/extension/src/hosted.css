@@ -169,6 +169,20 @@ button.word-hunk:hover { background: none; }
 .manifest-answers dt { margin-top: 14px; color: var(--muted); }
 .manifest-answers dd { margin: 3px 0 0; color: var(--chalk); white-space: pre-wrap; overflow-wrap: anywhere; }
 
+/* Setup, one step at a time: each card borrows its Setup form and saves from its own footer. */
+.home-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 12px; }
+.home-actions .start[hidden] { display: none; }
+#setup-guided { margin: 14px 0 6px; }
+#setup-guided[hidden] { display: none; }
+.setup-card .task-employer { max-width: 62ch; margin-top: 8px; line-height: 1.55; }
+.setup-card .section-body { padding: 0; }
+.setup-card [data-setup-only], .setup-card #working-memory { display: none; }
+.setup-card .connection-settings #identity { margin-top: 0; }
+.setup-card.ready #chatgpt-connect { display: none; }
+.setup-card .resume-list:empty { display: none; }
+.setup-done .task-title { font: 400 40px/1.15 var(--font-hand); color: var(--bone); }
+.setup-done .setup-step-body p { margin: 0 0 12px; max-width: 62ch; }
+
 /* Done. */
 .done { max-width: 640px; margin: 0 auto; padding-top: clamp(56px, 14vh, 150px); text-align: center; }
 .done h1 { font-size: 52px; }

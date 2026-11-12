@@ -1,9 +1,11 @@
-import { DASHBOARD_PAGE, DASHBOARD_SCRIPT, DASHBOARD_STYLE } from "../dashboard/src/page.js";
 import { join } from "node:path";
+import { rm } from "node:fs/promises";
 
 export async function buildExtension(outdir = join(import.meta.dir, "../../dist/packages/extension")): Promise<void> {
+  // The output directory belongs to this build; stale pages from older builds must not ship.
+  await rm(outdir, { recursive: true, force: true });
   const result = await Bun.build({
-    entrypoints: ["background", "popup", "inbox", "dashboard", "diagnostics", "submission-settings", "hosted"].map(name => join(import.meta.dir, `src/${name}.ts`)),
+    entrypoints: ["background", "popup", "diagnostics", "hosted"].map(name => join(import.meta.dir, `src/${name}.ts`)),
     define: {__WAT_EXTENSION_BUILD__:JSON.stringify(new Date().toISOString())},
     outdir,
     target: "browser",
@@ -22,14 +24,9 @@ export async function buildExtension(outdir = join(import.meta.dir, "../../dist/
   });
   if (!content.success) throw new Error(`Content script build failed: ${content.logs.join("\n")}`);
 
-  for (const name of ["popup.html", "popup.css", "popup-layout.css", "inbox.html", "diagnostics.html", "submission-settings.html", "submission-settings.css", "hosted.html", "hosted.css", "icon16.png", "icon32.png", "icon48.png", "icon128.png"]) await Bun.write(join(outdir,name),Bun.file(join(import.meta.dir,"src",name)));
-  await Bun.write(join(outdir, "dashboard.html"), DASHBOARD_PAGE
-    .replace('href="/dashboard.css"', 'href="dashboard.css"')
-    .replace('<script src="/dashboard.js" defer></script>', '<script src="dashboard.js" defer></script><script src="dashboard-ui.js" defer></script>'));
-  await Bun.write(join(outdir, "dashboard-ui.js"), DASHBOARD_SCRIPT);
-  await Bun.write(join(outdir, "dashboard.css"), DASHBOARD_STYLE.replaceAll("url('/fonts/", "url('fonts/"));
+  for (const name of ["popup.html", "popup.css", "popup-layout.css", "dashboard.css", "diagnostics.html", "hosted.html", "hosted.css", "icon16.png", "icon32.png", "icon48.png", "icon128.png"]) await Bun.write(join(outdir,name),Bun.file(join(import.meta.dir,"src",name)));
   for (const font of ["caveat.ttf", "nunito-sans.ttf"]) {
-    await Bun.write(join(outdir, "fonts", font), Bun.file(join(import.meta.dir, "../dashboard/assets", font)));
+    await Bun.write(join(outdir, "fonts", font), Bun.file(join(import.meta.dir, "assets/fonts", font)));
   }
   // pdf.js renders resume previews in the hosted page; its worker must be a packaged file.
   await Bun.write(join(outdir, "pdf.worker.min.mjs"), Bun.file(Bun.resolveSync("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.dir)));

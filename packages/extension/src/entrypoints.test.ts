@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { runInNewContext } from "node:vm";
 import { parseHTML } from "linkedom";
 
-async function bundle(entry: "dashboard" | "popup"): Promise<string> {
+async function bundle(entry: "popup"): Promise<string> {
   const result = await Bun.build({
     entrypoints: [`${import.meta.dir}/${entry}.ts`],
     target: "browser",
@@ -12,21 +12,18 @@ async function bundle(entry: "dashboard" | "popup"): Promise<string> {
   return result.outputs[0]!.text();
 }
 
-const permissionRequests: unknown[] = [];
+
 function chromeApi() {
   return {
     storage: {local:{setAccessLevel:async()=>{},get:async()=>({})},session:{setAccessLevel:async()=>{},get:async()=>({})}},
     runtime: {
       sendMessage: async (message: { type: string }) => {
-        if (message.type === "startService") return { ok: true };
         if (message.type === "status") return { ok: true, value: { authenticated: true } };
-        if (message.type === "discoveriesList") return { ok: true, value: [{ id: "discovery-1" }] };
         return { ok: true, value: null };
       },
       getURL: (path: string) => `chrome-extension://test/${path}`,
     },
     tabs: { create: async () => {} },
-    permissions: { request: async (request: unknown) => { permissionRequests.push(request); return true; } },
   };
 }
 
@@ -52,58 +49,6 @@ function browserContext(document: Document, window: Window) {
 }
 
 describe("extension entrypoint bundles", () => {
-  test("dashboard bundle initializes its status element under Window.status semantics", async () => {
-    const { document, window } = parseHTML("<html><body><header class='masthead'></header></body></html>");
-    const context = browserContext(document as unknown as Document, window as unknown as Window);
-    const script = await bundle("dashboard");
-    expect(() => runInNewContext(script, context.global)).not.toThrow();
-
-    await new Promise(resolve => setTimeout(resolve, 0));
-    const status = document.querySelector<HTMLElement>(".masthead p[role=status]");
-    expect(status).not.toBeNull();
-    expect(status?.textContent).toBe("Workspace service is running.");
-    expect(context.getWindowStatus()).not.toContain("[object HTMLParagraphElement]");
-  });
-
-  test("dashboard defaults to Cloudflare and hides overrides behind the debug shortcut", async () => {
-    const {document,window}=parseHTML("<html><head></head><body><header class='masthead'></header><section id='settings-panel'></section></body></html>");
-    const context=browserContext(document as unknown as Document,window as unknown as Window);
-    runInNewContext(await bundle("dashboard"),context.global);
-    const create=context.global.createSubmissionSettingsPanel as ()=>HTMLElement;
-    expect(typeof create).toBe("function");
-    document.querySelector("#settings-panel")!.append(create());
-    await new Promise(resolve=>setTimeout(resolve,0));
-    const endpoint=document.querySelector<HTMLInputElement>("#submission-endpoint")!;
-    expect(endpoint.value).toBe("https://watworks.alishahzad.dev");
-    const developer=document.querySelector<HTMLElement>("#submission-developer")!;
-    expect(developer.hidden).toBe(true);
-    const type=(target:EventTarget,word:string)=>{
-      for(const key of word){
-        const event=new (window as unknown as {Event:typeof Event}).Event("keydown",{bubbles:true});
-        Object.assign(event,{key});target.dispatchEvent(event);
-      }
-    };
-    type(endpoint,"debug");
-    expect(developer.hidden).toBe(true);
-    type(document,"debug");
-    expect(developer.hidden).toBe(false);
-    expect(document.querySelector("#submission-status")?.textContent).toContain("syncs automatically");
-    endpoint.value="http://127.0.0.1:39453";
-    // Custom servers answer CORS for the extension ID; saving never asks for host access.
-    document.querySelector<HTMLButtonElement>("#submission-save")!.click();
-    await new Promise(resolve=>setTimeout(resolve,0));
-    expect(permissionRequests).toEqual([]);
-    document.querySelector<HTMLButtonElement>("#submission-hide-developer")!.click();
-    expect(developer.hidden).toBe(true);
-    await new Promise(resolve=>setTimeout(resolve,0));
-    expect(endpoint.value).toBe("https://watworks.alishahzad.dev");
-    expect(document.querySelector("#submission-save")?.textContent).toBe("Save endpoint");
-    expect(document.querySelector("#submission-transfer")).toBeNull();
-    expect(document.querySelector("#submission-clear")).toBeNull();
-    expect(document.querySelector("dialog")).toBeNull();
-    expect(document.querySelector('link[href="chrome-extension://test/submission-settings.css"]')).not.toBeNull();
-  });
-
   test("popup bundle updates its status element under Window.status semantics", async () => {
     const { document, window } = parseHTML(await Bun.file(`${import.meta.dir}/popup.html`).text());
     const context = browserContext(document as unknown as Document, window as unknown as Window);
@@ -123,7 +68,7 @@ describe("extension entrypoint bundles", () => {
       document.dispatchEvent(event);
     }
     expect(diagnostics.hidden).toBe(false);
-    await new Promise(resolve => setTimeout(resolve, 0));
-    expect(document.querySelector<HTMLElement>('[href="submission-settings.html"]')!.hidden).toBe(false);
+    for (const removed of ["dashboard.html", "inbox.html", "submission-settings.html"]) expect(document.querySelector(`[href="${removed}"]`)).toBeNull();
+    expect(document.querySelector("#start-service")).toBeNull();
   });
 });

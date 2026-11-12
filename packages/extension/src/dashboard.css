@@ -1,7 +1,6 @@
-/** Adapted from alishahzaddev/src/lib/brand: charcoal paper, chalk, and sparse red ink. */
-export const DASHBOARD_STYLE = `
-@font-face { font-family: Caveat; src: url('/fonts/caveat.ttf') format('truetype'); font-weight: 400; font-display: swap; }
-@font-face { font-family: 'Nunito Sans'; src: url('/fonts/nunito-sans.ttf') format('truetype'); font-weight: 400; font-display: swap; }
+/* Adapted from alishahzaddev/src/lib/brand: charcoal paper, chalk, and sparse red ink. */
+@font-face { font-family: Caveat; src: url('fonts/caveat.ttf') format('truetype'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Nunito Sans'; src: url('fonts/nunito-sans.ttf') format('truetype'); font-weight: 400; font-display: swap; }
 :root { color-scheme: dark; --paper: #0a0a0a; --surface: #0b0b0b; --chalk: #e9e9e9; --bone: #ecece6; --muted: #a0a0a0; --faint: #858585; --dim: #7d7d7d; --rule: #1f1f1f; --rail: #2c2c2c; --ink: #b84c52; --font-hand: Caveat, cursive; --font-body: 'Nunito Sans', system-ui, sans-serif; --bg: var(--paper); --panel: var(--surface); --line: var(--rail); --accent: var(--bone); --bad: #e9a8ab; --warn: #c9bbb0; }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -118,5 +117,3 @@ iframe.preview { display: block; width: 100%; height: 100%; border: 0; backgroun
 .rule { padding: 12px 0; border-bottom: 1px dashed var(--rail); }
 @media (max-width: 680px) { .account-plan { text-align: left; justify-items: start; } main { padding-top: 14px; } header { flex-direction: column; gap: 20px; margin: 30px 0 24px; }.health { flex-direction: row; flex-wrap: wrap; gap: 16px; }.workspace-note { display: none; }.tabs { gap: 22px; scrollbar-width: thin; }.queue-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; }.queue-tabs button { justify-content: flex-start; padding: 10px 0; }.queue-tools { flex-wrap: wrap; gap: 12px; }.search-label { flex-basis: 100%; max-width: none; }.queue-tools label:last-of-type { flex: 1; }.card { padding: 18px 14px 14px; }.row { gap: 10px; grid-template-columns: 18px minmax(0, 1fr); }.row .state { grid-column: 2; justify-self: start; }.job-footer { margin-left: 28px; flex-direction: column; align-items: flex-start; gap: 10px; }.job-title { font-size: 25px; }.apply-bar { padding: 12px; gap: 8px; flex-wrap: wrap; }#apply-count { flex-basis: 100%; }.apply-bar button { flex: 1; }.description { padding: 16px; }.overlay { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }.document-overlay { height: calc(100dvh - 16px); }.dialog-header, .dialog-body { padding: 14px; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
-`;
-

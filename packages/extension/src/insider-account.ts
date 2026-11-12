@@ -1,36 +1,32 @@
 import { z } from 'zod';
-import { getSubmissionSettings, isSelfHostedSubmission } from './submission-client.js';
 import { readAccountEmail } from '../../waterlooworks-client/src/account-email.js';
 import { browserFetch } from './research.js';
 import { currentWaterlooWorksSession } from './waterlooworks-session.js';
-import { INSIDER_SESSION_KEY, HOSTED_INSIDER_SESSION_KEY, readInsiderSession } from './insider-session.js';
+import { HOSTED_INSIDER_SESSION_KEY, readInsiderSession } from './insider-session.js';
 import { hostedSettings } from './hosted-settings.js';
-export type InsiderAccount={email:string|null;insider:boolean;term:string|null;admin:boolean;selfHosted?:boolean;reason?:string};
+export type InsiderAccount={email:string|null;insider:boolean;term:string|null;admin:boolean;reason?:string};
 const accountSchema=z.object({email:z.string().email(),insider:z.boolean(),term:z.string().nullable(),admin:z.boolean()});
 const resultSchema=z.object({token:z.string().regex(/^[a-f0-9]{64}$/).nullable(),expiresAt:z.number().optional(),account:accountSchema});
-type RecognitionState={pending?:Promise<InsiderAccount>;cached?:{key:string;until:number;account:InsiderAccount}};
-const configured:RecognitionState={},hosted:RecognitionState={};
-export function getInsiderAccount(options:{hosted?:boolean;force?:boolean}={}):Promise<InsiderAccount>{
-  const state=options.hosted?hosted:configured;
+const state:{pending?:Promise<InsiderAccount>;cached?:{key:string;until:number;account:InsiderAccount}}={};
+/** The signed-in WaterlooWorks account and its Insider grant on the hosted endpoint. */
+export function getHostedAccount(force=false):Promise<InsiderAccount>{
   if(state.pending)return state.pending;
-  state.pending=recognize(state,options).finally(()=>{delete state.pending;});return state.pending;
+  state.pending=recognize(force).finally(()=>{delete state.pending;});return state.pending;
 }
-export function getHostedAccount(force=false):Promise<InsiderAccount>{return getInsiderAccount({hosted:true,force});}
-async function recognize(state:RecognitionState,options:{hosted?:boolean;force?:boolean}):Promise<InsiderAccount>{
+async function recognize(force:boolean):Promise<InsiderAccount>{
   const core=(email:string|null,reason?:string):InsiderAccount=>({email,insider:false,term:null,admin:false,...(reason ? {reason} : {})});
-  const getSettings=options.hosted?async()=>hostedSettings():getSubmissionSettings;
-  const sessionKey=options.hosted?HOSTED_INSIDER_SESSION_KEY:INSIDER_SESSION_KEY;
+  const getSettings=async()=>hostedSettings();
+  const sessionKey=HOSTED_INSIDER_SESSION_KEY;
   const settings=await getSettings();
   const {payload,fingerprint}=await currentWaterlooWorksSession();
   const key=JSON.stringify([settings.endpoint,settings.revision,fingerprint]);
   const cached=state.cached;
-  if(!options.force&&cached?.key===key&&cached.until>Date.now()&&(!cached.account.insider||await readInsiderSession(settings,sessionKey)))return cached.account;
+  if(!force&&cached?.key===key&&cached.until>Date.now()&&(!cached.account.insider||await readInsiderSession(settings,sessionKey)))return cached.account;
   let account:InsiderAccount;
   let email:string|null=null;
   try{
     email=await readAccountEmail(browserFetch);
-    if(isSelfHostedSubmission(settings))account={...core(email,'Self-hosted server · no hosted account required'),selfHosted:true};
-    else {
+    {
       let stored=await readInsiderSession(settings,sessionKey);
       const verify=()=>fetch(`${settings.endpoint}/v1/${stored?'account':'auth/waterlooworks'}`,{
         method:stored?'GET':'POST',credentials:'omit',redirect:'error',cache:'no-store',signal:AbortSignal.timeout(60000),
