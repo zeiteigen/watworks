@@ -22,6 +22,9 @@ waterlooworks-har-report*.json
 # Browser inspection artifacts can contain authenticated page data.
 .playwright-mcp/
 
+# The public site build copied into the Insider proxy's assets by `bun run build:site-assets`.
+/packages/insider-proxy/assets/site/
+
 # Local Cloudflare emulator state and generated Worker bundles.
 .wrangler/
 
